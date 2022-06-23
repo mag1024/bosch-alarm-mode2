@@ -81,6 +81,8 @@ AREA_STATUS = {
     0x0E: "Away Entry Delay",
 }
 
+POINT_STATUS_OPEN = 0x02
+POINT_STATUS_NORMAL = 0x03
 POINT_STATUS_UNKNOWN = 0xFF
 
 POINT_STATUS = {
@@ -95,7 +97,9 @@ POINT_STATUS = {
 }
 
 class CMD:
+    # Unauthenticated commands
     WHAT_ARE_YOU = 0x01
+    AUTHENTICATE = 0x06
     # Area group
     CONFIGURED_AREAS = 0x24
     AREA_STATUS = 0x26
@@ -106,4 +110,6 @@ class CMD:
     POINT_TEXT = 0x3C
     # System group
     SET_SUBSCRIPTION = 0x5F
+    # Diagnostic group
+    GET_PRODUCT_SERIAL = 0x4A
 

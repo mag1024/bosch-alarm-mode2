@@ -13,30 +13,27 @@ def _mask_to_indeces(bytes):
     return [i + 1 for i, c in enumerate(as_bits) if c == '1']
 
 class Connection(asyncio.Protocol):
-    def __init__(self, passcode, ready_cb, state_cb):
+    def __init__(self, passcode, on_state_update, on_disconnect):
         self._passcode = passcode
-        self._ready_cb = ready_cb
-        self._state_cb = state_cb
+        self._on_state_update = on_state_update
+        self._on_disconnect = on_disconnect
         self._transport = None
-        self.on_disconnect = asyncio.get_running_loop().create_future()
         self._buffer = bytearray()
         self._pending = asyncio.Queue()
 
     def connection_made(self, transport):
-        print("ready callback")
         self._transport = transport
-        asyncio.ensure_future(self._authenticate())
 
     def connection_lost(self, exc):
-        print("disconnected callback")
-        self.on_disconnect.set_result(True)
+        print("connection lost")
+        self._on_disconnect()
 
     def data_received(self, data):
         print("<<", data)
         self._buffer += data
         self._consume_buffer()
 
-    def send_command(self, code, data = bytearray()):
+    def send_command(self, code, data = bytearray()) -> asyncio.Future:
         request = bytearray(b'\x01')  # protocol version
         request.append(len(data) + 1)
         request.append(code)
@@ -47,18 +44,8 @@ class Connection(asyncio.Protocol):
         self._transport.write(request)
         return response
 
-    async def _authenticate(self):
-        creds = bytearray(b'\x01')  # automation user
-        creds.extend(map(ord, self._passcode))
-        creds.append(0x00); # null terminate
-        result = await self.send_command(0x06, creds)
-        if result == b'\x01':
-            print("Authentication success!")
-            await self._ready_cb()
-        else:
-            print("Authentication failed:",
-                    ["Not Authorized", "Authorized", "Max Connections"][result])
-            self._transport.close()
+    def close(self):
+        if self._transport: self._transport.close()
 
     def _consume_buffer(self):
         while self._buffer:
@@ -71,11 +58,11 @@ class Connection(asyncio.Protocol):
                 case 0x02:
                     msg_len = int.from_bytes(self._buffer[1:3], 'big') + 3
                     if len(self._buffer) < msg_len: break
-                    self._state_cb(self._buffer[3:msg_len])
+                    self._on_state_update(self._buffer[3:msg_len])
                 case _:
                     raise RuntimeError('unknown protocol ' + str(self._buffer))
             self._buffer = self._buffer[msg_len:]
-  
+
     def _process_response(self, data):
       response = self._pending.get_nowait()
       match data[0]:
@@ -87,19 +74,43 @@ class Connection(asyncio.Protocol):
           case _:
               response.set_exception(Exception("unexpected response code:", data))
 
-class Area:
-    def __init__(self, name = None, status = AREA_STATUS_UNKNOWN):
+class PanelEntity:
+    def __init__(self, name, status):
+        self._observer = None
         self.name = name
         self.status = status
-    
+
+    @property
+    def status(self):
+        return self._status
+    @status.setter
+    def status(self, value):
+        self._status = value
+        self._notify()
+
+    def attach(self, observer):
+        self._observer = observer
+
+    def _notify(self):
+        if self._observer: self._observer(self)
+
+
+class Area(PanelEntity):
+    def __init__(self, name = None, status = AREA_STATUS_UNKNOWN):
+        PanelEntity.__init__(self, name, status)
+
     def __repr__(self):
         return f"{self.name}: {AREA_STATUS[self.status]}"
 
-class Point:
+class Point(PanelEntity):
     def __init__(self, name = None, status = POINT_STATUS_UNKNOWN):
-        self.name = name
-        self.status = status
-    
+        PanelEntity.__init__(self, name, status)
+
+    def is_open(self) -> bool:
+        return self.status == POINT_STATUS_OPEN
+    def is_normal(self) -> bool:
+        return self.status == POINT_STATUS_NORMAL
+
     def __repr__(self):
         return f"{self.name}: {POINT_STATUS[self.status]}"
 
@@ -109,24 +120,39 @@ class Panel:
         self._host = host
         self._port = port
         self._passcode = passcode
+
+        self._connection = None
+
         self.model = None
         self.protocol_version = None
+        self.serial_number = None
         self.areas = {}
         self.points = {}
 
-    def run(self):
-        """ Initiates operation inside an already established asyncio loop """
-        asyncio.ensure_future(self._maintain_connection())
+    async def connect(self, full_load=True):
+        print('Connecting to %s:%d...' % (self._host, self._port))
+        self._keep_running = True
+        connection_factory = lambda: Connection(
+                self._passcode, self._on_state_update, self._on_disconnect)
+        transport, connection = await asyncio.wait_for(
+                asyncio.get_running_loop().create_connection(
+                    connection_factory,
+                    host=self._host, port=self._port, ssl=ssl_context),
+                timeout=10)
+        self._connection = connection
+        await self._authenticate()
+        await self._basicinfo()
+        if full_load: await self._load_state()
 
-    def run_and_loop(self):
-        """ Establishes a new asyncio loop, and initiates operation,
-            and runs for ever. """
-        asyncio.run(self._maintain_connection())
+    def disconnect(self):
+        self._keep_running = False
+        if self._connection: self._connection.close()
 
     def print(self):
         if self.model: print('Model:', self.model)
         if self.protocol_version: print('Protocol version:',
                 self.protocol_version)
+        if self.serial_number: print('Serial number:', self.serial_number)
         if self.areas:
             print('Areas:')
             print(self.areas)
@@ -134,39 +160,38 @@ class Panel:
             print('Points:')
             print(self.points)
 
-    async def _maintain_connection(self):
-        while True:
-            print('Reconnecting to %s:%d...' % (self._host, self._port))
-            try:
-                self._connection = None
-                connection_factory = lambda: Connection(
-                        self._passcode, self._ready, self._state_update)
-                transport, connection = await asyncio.wait_for(
-                        asyncio.get_running_loop().create_connection(
-                            connection_factory,
-                            host=self._host, port=self._port, ssl=ssl_context),
-                        timeout=5)
-                self._connection = connection
-                await connection.on_disconnect
-            except Exception as e:
-                print(e)
-                await asyncio.sleep(10)
+    def _on_disconnect(self):
+        self._connection = None
+        if self._keep_running:
+            asyncio.get_running_loop().call_later(10, self._maybe_reconnect)
 
-    async def _ready(self):
-        print('Panel connection is ready!')
-        await asyncio.gather(
-                self._whatareyou(),
-                self._loadareas(),
-                self._loadpoints(),
-                )
+    async def _maybe_reconnect(self):
+        if self._keep_running: await self.connect()
+
+    async def _authenticate(self):
+        creds = bytearray(b'\x01')  # automation user
+        creds.extend(map(ord, self._passcode))
+        creds.append(0x00); # null terminate
+        result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
+        if result != b'\x01':
+            self._transport.close()
+            raise PermissionError("Authentication failed: " +
+                    ["Not Authorized", "Authorized", "Max Connections"][result])
+        print("Authentication success!")
+
+    async def _load_state(self):
+        await asyncio.gather(self._loadareas(), self._loadpoints())
         await self._subscribe()
         self.print()
 
-    async def _whatareyou(self):
+    async def _basicinfo(self):
         data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]: print ('Busy: %d' % data[13])
+
+        data = await self._connection.send_command(CMD.GET_PRODUCT_SERIAL, b'\x00\x00')
+        self.serial_number = int.from_bytes(data[0:6], 'big')
 
     async def _loadareas(self):
         self.areas = {}
@@ -180,7 +205,7 @@ class Panel:
                 CMD.CONFIGURED_POINTS, CMD.POINT_STATUS, CMD.POINT_TEXT):
             self.points[id] = Point(name, status)
 
-    async def _load_id_name_status(self, list_cmd, status_cmd, name_cmd):
+    async def _load_id_name_status(self, list_cmd, status_cmd, name_cmd) -> []:
         output = []
         data = await self._connection.send_command(list_cmd)
         for id in _mask_to_indeces(data):
@@ -210,7 +235,7 @@ class Panel:
         data += kIgnore    # unused
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
-    def _state_update(self, data):
+    def _on_state_update(self, data):
         if data[0] == 0x07: # point state
             point = int.from_bytes(data[2:4], 'big')
             self.points[point].status = data[4]
