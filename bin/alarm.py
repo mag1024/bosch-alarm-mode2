@@ -2,6 +2,8 @@
 
 import argparse
 import asyncio
+import logging
+import sys
 
 from bosch_alarm_mode2 import Panel
 
@@ -11,6 +13,10 @@ cli_parser.add_argument('--port', type=int, help="panel port")
 cli_parser.add_argument('-P', '--passcode', help="Automation passcode")
 
 args = cli_parser.parse_args()
+
+logging.basicConfig(stream = sys.stdout,
+                    format='%(levelname)s: %(message)s',
+                    level = logging.DEBUG)
 
 panel = Panel(host=args.host, port=args.port, passcode=args.passcode)
 loop = asyncio.new_event_loop()

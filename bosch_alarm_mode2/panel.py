@@ -1,21 +1,20 @@
 import asyncio
 import ssl
+import logging
 
 from .const import *
+
+LOG = logging.getLogger(__name__)
 
 ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
 
-def _mask_to_indeces(bytes):
-    as_bits = ''.join(format(byte, '08b') for byte in bytes)
-    return [i + 1 for i, c in enumerate(as_bits) if c == '1']
-
 class Connection(asyncio.Protocol):
-    def __init__(self, passcode, on_state_update, on_disconnect):
+    def __init__(self, passcode, on_status_update, on_disconnect):
         self._passcode = passcode
-        self._on_state_update = on_state_update
+        self._on_status_update = on_status_update
         self._on_disconnect = on_disconnect
         self._transport = None
         self._buffer = bytearray()
@@ -25,11 +24,11 @@ class Connection(asyncio.Protocol):
         self._transport = transport
 
     def connection_lost(self, exc):
-        print("connection lost")
+        LOG.info("connection lost")
         self._on_disconnect()
 
     def data_received(self, data):
-        print("<<", data)
+        LOG.debug("<< %s", data)
         self._buffer += data
         self._consume_buffer()
 
@@ -40,12 +39,14 @@ class Connection(asyncio.Protocol):
         request.extend(data)
         response = asyncio.get_running_loop().create_future()
         self._pending.put_nowait(response)
-        print(">>", bytes(request))
+        LOG.debug(">> %s", bytes(request))
         self._transport.write(request)
         return response
 
     def close(self):
-        if self._transport: self._transport.close()
+        if self._transport:
+            self._transport.close()
+            self._transport = None
 
     def _consume_buffer(self):
         while self._buffer:
@@ -58,7 +59,7 @@ class Connection(asyncio.Protocol):
                 case 0x02:
                     msg_len = int.from_bytes(self._buffer[1:3], 'big') + 3
                     if len(self._buffer) < msg_len: break
-                    self._on_state_update(self._buffer[3:msg_len])
+                    self._on_status_update(self._buffer[3:msg_len])
                 case _:
                     raise RuntimeError('unknown protocol ' + str(self._buffer))
             self._buffer = self._buffer[msg_len:]
@@ -88,8 +89,7 @@ class PanelEntity:
         self._status = value
         self._notify()
 
-    def attach(self, observer):
-        self._observer = observer
+    def attach(self, observer): self._observer = observer
 
     def _notify(self):
         if self._observer: self._observer(self)
@@ -129,11 +129,16 @@ class Panel:
         self.areas = {}
         self.points = {}
 
-    async def connect(self, full_load=True):
-        print('Connecting to %s:%d...' % (self._host, self._port))
+    LOAD_BASIC_INFO = 1 << 0
+    LOAD_ENTITIES = 1 << 1
+    LOAD_STATUS = 1 << 2
+    LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
+
+    async def connect(self, load_selector = LOAD_ALL):
+        LOG.info('Connecting to %s:%d...', self._host, self._port)
         self._keep_running = True
         connection_factory = lambda: Connection(
-                self._passcode, self._on_state_update, self._on_disconnect)
+                self._passcode, self._on_status_update, self._on_disconnect)
         transport, connection = await asyncio.wait_for(
                 asyncio.get_running_loop().create_connection(
                     connection_factory,
@@ -141,8 +146,18 @@ class Panel:
                 timeout=10)
         self._connection = connection
         await self._authenticate()
-        await self._basicinfo()
-        if full_load: await self._load_state()
+        await self.load(load_selector)
+
+    async def load(self, load_selector):
+        if load_selector & self.LOAD_BASIC_INFO:
+            await self._basicinfo()
+        if load_selector & self.LOAD_ENTITIES:
+            await asyncio.gather(self._load_areas(), self._load_points())
+        if load_selector & self.LOAD_STATUS:
+            await asyncio.gather(
+                    self._load_entity_status(CMD.AREA_STATUS, self.areas),
+                    self._load_entity_status(CMD.POINT_STATUS, self.points))
+            await self._subscribe()
 
     def disconnect(self):
         self._keep_running = False
@@ -162,11 +177,16 @@ class Panel:
 
     def _on_disconnect(self):
         self._connection = None
+        for a in self.areas: a.state = AREA_STATUS_UNKNOWN
+        for p in self.points: p.state = POINT_STATUS_UNKNOWN
         if self._keep_running:
             asyncio.get_running_loop().call_later(10, self._maybe_reconnect)
 
-    async def _maybe_reconnect(self):
-        if self._keep_running: await self.connect()
+    def _maybe_reconnect(self):
+        if self._keep_running:
+            load_selector = self.LOAD_ALL
+            if self.areas and self.points: load_selector = self.LOAD_STATUS
+            asyncio.ensure_future(self.connect(load_selector))
 
     async def _authenticate(self):
         creds = bytearray(b'\x01')  # automation user
@@ -174,71 +194,72 @@ class Panel:
         creds.append(0x00); # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
         if result != b'\x01':
-            self._transport.close()
-            raise PermissionError("Authentication failed: " +
-                    ["Not Authorized", "Authorized", "Max Connections"][result])
-        print("Authentication success!")
-
-    async def _load_state(self):
-        await asyncio.gather(self._loadareas(), self._loadpoints())
-        await self._subscribe()
-        self.print()
+            self._connection.close()
+            error = ["Not Authorized", "Authorized", "Max Connections"][result[0]]
+            raise PermissionError("Authentication failed: " + error)
+        LOG.debug("Authentication success!")
 
     async def _basicinfo(self):
         data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
-        if data[13]: print ('Busy: %d' % data[13])
+        if data[13]: LOG.warning('busy flag: %d', data[13])
 
-        data = await self._connection.send_command(CMD.GET_PRODUCT_SERIAL, b'\x00\x00')
+        data = await self._connection.send_command(
+                CMD.PRODUCT_SERIAL, b'\x00\x00')
         self.serial_number = int.from_bytes(data[0:6], 'big')
 
-    async def _loadareas(self):
-        self.areas = {}
-        for id, name, status in await self._load_id_name_status(
-                CMD.CONFIGURED_AREAS, CMD.AREA_STATUS, CMD.AREA_TEXT):
-            self.areas[id] = Area(name, status)
+    async def _load_areas(self):
+        names = await self._load_names(CMD.AREA_TEXT)
+        self.areas = {id: Area(name) for id, name in names.items()}
 
-    async def _loadpoints(self):
-        self.points = {}
-        for id, name, status in await self._load_id_name_status(
-                CMD.CONFIGURED_POINTS, CMD.POINT_STATUS, CMD.POINT_TEXT):
-            self.points[id] = Point(name, status)
+    async def _load_points(self):
+        names = await self._load_names(CMD.POINT_TEXT)
+        self.points = {id: Point(name) for id, name in names.items()}
 
-    async def _load_id_name_status(self, list_cmd, status_cmd, name_cmd) -> []:
-        output = []
-        data = await self._connection.send_command(list_cmd)
-        for id in _mask_to_indeces(data):
-            id_bytes = id.to_bytes(2, 'big')
-            name_request = bytearray(id_bytes)
-            name_request.append(0x00)  # primary language
-            name_future = self._connection.send_command(name_cmd, name_request)
-            status_response = await self._connection.send_command(status_cmd, id_bytes)
-            name_response = await name_future
-            output.append((
-                id, name_response[0:-1].decode('ascii'), status_response[2]))
-        return output
+    async def _load_names(self, name_cmd) -> dict[int, str]:
+        names = {}
+        id = 0
+        while True:
+            request = bytearray(id.to_bytes(2, 'big'))
+            request.append(0x00)  # primary language
+            request.append(0x01)  # return many
+            data = await self._connection.send_command(name_cmd, request)
+            if not data: break
+            while data:
+                id = int.from_bytes(data[0:2], 'big')
+                name, data = data[2:].split(b'\x00', 1)
+                names[id] = name.decode('ascii')
+        return names
+
+    async def _load_entity_status(self, status_cmd, entities):
+        request = bytearray()
+        for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
+        response = await self._connection.send_command(status_cmd, request)
+        while response:
+            entities[int.from_bytes(response[0:2], 'big')].status = response[2]
+            response = response[3:]
 
     async def _subscribe(self):
-        kIgnore = bytearray(b'\x00')
-        kSubscribe = bytearray(b'\x01')
+        IGNORE = bytearray(b'\x00')
+        SUBSCRIBE = bytearray(b'\x01')
         data = bytearray(b'\x01') # format
-        data += kIgnore    # confidence / heartbeat
-        data += kIgnore    # event mem
-        data += kIgnore    # event log
-        data += kIgnore    # config change
-        data += kSubscribe # area on/off
-        data += kSubscribe # area ready
-        data += kIgnore    # output state
-        data += kSubscribe # point state
-        data += kSubscribe # door state
-        data += kIgnore    # unused
+        data += IGNORE    # confidence / heartbeat
+        data += IGNORE    # event mem
+        data += IGNORE    # event log
+        data += IGNORE    # config change
+        data += SUBSCRIBE # area on/off
+        data += SUBSCRIBE # area ready
+        data += IGNORE    # output status
+        data += SUBSCRIBE # point status
+        data += IGNORE    # door status
+        data += IGNORE    # unused
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
-    def _on_state_update(self, data):
-        if data[0] == 0x07: # point state
+    def _on_status_update(self, data):
+        if data[0] == 0x07: # point status
             point = int.from_bytes(data[2:4], 'big')
             self.points[point].status = data[4]
-            print("Point updated:", self.points[point])
+            LOG.debug("Point updated: %s", self.points[point])
         else:
-            print("Unhandled state update", data[0])
+            LOG.debug("Unhandled status update: %d", data[0])

@@ -101,15 +101,13 @@ class CMD:
     WHAT_ARE_YOU = 0x01
     AUTHENTICATE = 0x06
     # Area group
-    CONFIGURED_AREAS = 0x24
     AREA_STATUS = 0x26
     AREA_TEXT = 0x29
     # Point group
-    CONFIGURED_POINTS = 0x35
     POINT_STATUS = 0x38
     POINT_TEXT = 0x3C
     # System group
     SET_SUBSCRIPTION = 0x5F
     # Diagnostic group
-    GET_PRODUCT_SERIAL = 0x4A
+    PRODUCT_SERIAL = 0x4A
 
