@@ -51,29 +51,24 @@ class Connection(asyncio.Protocol):
     def _consume_buffer(self):
         while self._buffer:
             msg_len = 0
-            match self._buffer[0]:
-                case 0x01:
-                    msg_len = self._buffer[1] + 2
-                    if len(self._buffer) < msg_len: break
-                    self._process_response(self._buffer[2:msg_len])
-                case 0x02:
-                    msg_len = int.from_bytes(self._buffer[1:3], 'big') + 3
-                    if len(self._buffer) < msg_len: break
-                    self._on_status_update(self._buffer[3:msg_len])
-                case _:
-                    raise RuntimeError('unknown protocol ' + str(self._buffer))
+            if self._buffer[0] == 0x01:
+                msg_len = self._buffer[1] + 2
+                if len(self._buffer) < msg_len: break
+                self._process_response(self._buffer[2:msg_len])
+            elif self._buffer[0] == 0x02:
+                msg_len = int.from_bytes(self._buffer[1:3], 'big') + 3
+                if len(self._buffer) < msg_len: break
+                self._on_status_update(self._buffer[3:msg_len])
+            else:
+                raise RuntimeError('unknown protocol ' + str(self._buffer))
             self._buffer = self._buffer[msg_len:]
 
     def _process_response(self, data):
       response = self._pending.get_nowait()
-      match data[0]:
-          case 0xFC: response.set_result(None)
-          case 0xFD:
-              response.set_exception(Exception("NACK: %s" % ERROR[data[1]]))
-          case 0xFE:
-              response.set_result(data[1:])
-          case _:
-              response.set_exception(Exception("unexpected response code:", data))
+      if data[0] == 0xFC: response.set_result(None)
+      elif data[0] == 0xFD: response.set_exception(Exception("NACK: %s" % ERROR[data[1]]))
+      elif data[0] == 0xFE: response.set_result(data[1:])
+      else: response.set_exception(Exception("unexpected response code:", data))
 
 class PanelEntity:
     def __init__(self, name, status):
