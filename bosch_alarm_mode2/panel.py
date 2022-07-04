@@ -172,8 +172,8 @@ class Panel:
 
     def _on_disconnect(self):
         self._connection = None
-        for a in self.areas: a.state = AREA_STATUS_UNKNOWN
-        for p in self.points: p.state = POINT_STATUS_UNKNOWN
+        for a in self.areas.values(): a.state = AREA_STATUS_UNKNOWN
+        for p in self.points.values(): p.state = POINT_STATUS_UNKNOWN
         if self._keep_running:
             asyncio.get_running_loop().call_later(10, self._maybe_reconnect)
 
