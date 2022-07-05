@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 
 from .const import *
+from .connection import Connection
 
 LOG = logging.getLogger(__name__)
 
@@ -11,65 +12,6 @@ ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
-
-class Connection(asyncio.Protocol):
-    def __init__(self, passcode, on_status_update, on_disconnect):
-        self._passcode = passcode
-        self._on_status_update = on_status_update
-        self._on_disconnect = on_disconnect
-        self._transport = None
-        self._buffer = bytearray()
-        self._pending = asyncio.Queue()
-
-    def connection_made(self, transport):
-        self._transport = transport
-
-    def connection_lost(self, exc):
-        LOG.info("connection lost")
-        self._on_disconnect()
-
-    def data_received(self, data):
-        LOG.debug("<< %s", data)
-        self._buffer += data
-        self._consume_buffer()
-
-    def send_command(self, code, data = bytearray()) -> asyncio.Future:
-        request = bytearray(b'\x01')  # protocol version
-        request.append(len(data) + 1)
-        request.append(code)
-        request.extend(data)
-        response = asyncio.get_running_loop().create_future()
-        self._pending.put_nowait(response)
-        LOG.debug(">> %s", bytes(request))
-        self._transport.write(request)
-        return response
-
-    def close(self):
-        if self._transport:
-            self._transport.close()
-            self._transport = None
-
-    def _consume_buffer(self):
-        while self._buffer:
-            msg_len = 0
-            if self._buffer[0] == 0x01:
-                msg_len = self._buffer[1] + 2
-                if len(self._buffer) < msg_len: break
-                self._process_response(self._buffer[2:msg_len])
-            elif self._buffer[0] == 0x02:
-                msg_len = int.from_bytes(self._buffer[1:3], 'big') + 3
-                if len(self._buffer) < msg_len: break
-                self._on_status_update(self._buffer[3:msg_len])
-            else:
-                raise RuntimeError('unknown protocol ' + str(self._buffer))
-            self._buffer = self._buffer[msg_len:]
-
-    def _process_response(self, data):
-      response = self._pending.get_nowait()
-      if data[0] == 0xFC: response.set_result(None)
-      elif data[0] == 0xFD: response.set_exception(Exception("NACK: %s" % ERROR[data[1]]))
-      elif data[0] == 0xFE: response.set_result(data[1:])
-      else: response.set_exception(Exception("unexpected response code:", data))
 
 class PanelEntity:
     def __init__(self, name, status):
@@ -113,6 +55,7 @@ class Point(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
     def __init__(self, host, port, passcode):
+        LOG.debug("Panel created")
         self._host = host
         self._port = port
         self._passcode = passcode
@@ -157,6 +100,9 @@ class Panel:
             self._connection_monitor_task = None
         if self._connection: self._connection.close()
 
+    def connection_status(self) -> bool:
+        return self._connection != None
+
     def print(self):
         if self.model: print('Model:', self.model)
         if self.protocol_version: print('Protocol version:',
@@ -190,19 +136,23 @@ class Panel:
 
     async def _connection_monitor(self):
         while True:
-            await asyncio.sleep(10)
+            await asyncio.sleep(20)
             if self._connection:
                 heartbeat_age = timedelta(0)
                 if self._last_heartbeat:
                     heartbeat_age = datetime.now() - self._last_heartbeat
-                if heartbeat_age > timedelta(minutes=1):
-                    LOG.debug("Heartbeat expired (%s): closing connection.", heartbeat_age)
+                if heartbeat_age > timedelta(minutes=3):
+                    LOG.debug("Heartbeat expired (%s): resetting connection.", heartbeat_age)
                     self._connection.close()
-            if not self._connection:
-                LOG.debug("Reconnecting...")
+            else:
                 loaded = self.areas and self.points
                 load_selector = self.LOAD_STATUS if loaded else self.LOAD_ALL
-                asyncio.ensure_future(self._connect(load_selector))
+                try:
+                    await self._connect(load_selector)
+                except asyncio.exceptions.CancelledError:
+                    raise
+                except Exception as e:
+                    LOG.debug(repr(e))
 
     async def _authenticate(self):
         creds = bytearray(b'\x01')  # automation user
