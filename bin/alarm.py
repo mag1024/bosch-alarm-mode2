@@ -18,7 +18,10 @@ logging.basicConfig(stream = sys.stdout,
                     format='%(levelname)s: %(message)s',
                     level = logging.DEBUG)
 
-panel = Panel(host=args.host, port=args.port, passcode=args.passcode)
 loop = asyncio.new_event_loop()
-loop.run_until_complete(panel.connect())
-loop.run_forever()
+panel = Panel(host=args.host, port=args.port, passcode=args.passcode)
+try:
+    loop.run_until_complete(panel.connect())
+    loop.run_forever()
+except KeyboardInterrupt:
+    loop.run_until_complete(panel.disconnect())

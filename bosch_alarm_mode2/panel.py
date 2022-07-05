@@ -1,6 +1,7 @@
 import asyncio
 import ssl
 import logging
+from datetime import datetime, timedelta
 
 from .const import *
 
@@ -117,6 +118,7 @@ class Panel:
         self._passcode = passcode
 
         self._connection = None
+        self._last_heartbeat = None
 
         self.model = None
         self.protocol_version = None
@@ -130,18 +132,9 @@ class Panel:
     LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
 
     async def connect(self, load_selector = LOAD_ALL):
-        LOG.info('Connecting to %s:%d...', self._host, self._port)
-        self._keep_running = True
-        connection_factory = lambda: Connection(
-                self._passcode, self._on_status_update, self._on_disconnect)
-        transport, connection = await asyncio.wait_for(
-                asyncio.get_running_loop().create_connection(
-                    connection_factory,
-                    host=self._host, port=self._port, ssl=ssl_context),
-                timeout=10)
-        self._connection = connection
-        await self._authenticate()
-        await self.load(load_selector)
+        loop = asyncio.get_running_loop()
+        self._connection_monitor_task = loop.create_task(self._connection_monitor())
+        await self._connect(load_selector)
 
     async def load(self, load_selector):
         if load_selector & self.LOAD_BASIC_INFO:
@@ -154,8 +147,14 @@ class Panel:
                     self._load_entity_status(CMD.POINT_STATUS, self.points))
             await self._subscribe()
 
-    def disconnect(self):
-        self._keep_running = False
+    async def disconnect(self):
+        if self._connection_monitor_task:
+            self._connection_monitor_task.cancel()
+            try:
+                await self._connection_monitor_task
+            except asyncio.CancelledError:
+                pass
+            self._connection_monitor_task = None
         if self._connection: self._connection.close()
 
     def print(self):
@@ -170,18 +169,40 @@ class Panel:
             print('Points:')
             print(self.points)
 
+    async def _connect(self, load_selector):
+        LOG.info('Connecting to %s:%d...', self._host, self._port)
+        connection_factory = lambda: Connection(
+                self._passcode, self._on_status_update, self._on_disconnect)
+        transport, connection = await asyncio.wait_for(
+                asyncio.get_running_loop().create_connection(
+                    connection_factory,
+                    host=self._host, port=self._port, ssl=ssl_context),
+                timeout=10)
+        self._connection = connection
+        await self._authenticate()
+        await self.load(load_selector)
+
     def _on_disconnect(self):
         self._connection = None
+        self._last_heartbeat = None
         for a in self.areas.values(): a.state = AREA_STATUS_UNKNOWN
         for p in self.points.values(): p.state = POINT_STATUS_UNKNOWN
-        if self._keep_running:
-            asyncio.get_running_loop().call_later(10, self._maybe_reconnect)
 
-    def _maybe_reconnect(self):
-        if self._keep_running:
-            load_selector = self.LOAD_ALL
-            if self.areas and self.points: load_selector = self.LOAD_STATUS
-            asyncio.ensure_future(self.connect(load_selector))
+    async def _connection_monitor(self):
+        while True:
+            await asyncio.sleep(10)
+            if self._connection:
+                heartbeat_age = timedelta(0)
+                if self._last_heartbeat:
+                    heartbeat_age = datetime.now() - self._last_heartbeat
+                if heartbeat_age > timedelta(minutes=1):
+                    LOG.debug("Heartbeat expired (%s): closing connection.", heartbeat_age)
+                    self._connection.close()
+            if not self._connection:
+                LOG.debug("Reconnecting...")
+                loaded = self.areas and self.points
+                load_selector = self.LOAD_STATUS if loaded else self.LOAD_ALL
+                asyncio.ensure_future(self._connect(load_selector))
 
     async def _authenticate(self):
         creds = bytearray(b'\x01')  # automation user
@@ -239,11 +260,11 @@ class Panel:
         IGNORE = bytearray(b'\x00')
         SUBSCRIBE = bytearray(b'\x01')
         data = bytearray(b'\x01') # format
-        data += IGNORE    # confidence / heartbeat
+        data += SUBSCRIBE # confidence / heartbeat
         data += IGNORE    # event mem
         data += IGNORE    # event log
         data += IGNORE    # config change
-        data += SUBSCRIBE # area on/off
+        data += IGNORE    # area on/off
         data += SUBSCRIBE # area ready
         data += IGNORE    # output status
         data += SUBSCRIBE # point status
@@ -252,7 +273,14 @@ class Panel:
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
     def _on_status_update(self, data):
-        if data[0] == 0x07: # point status
+        if data[0] == 0x00: # heartbeat
+            self._last_heartbeat = datetime.now()
+        elif data[0] == 0x05: # area ready
+            area = int.from_bytes(data[2:4], 'big')
+            ready_status = ["Not", "Part", "Full"][data[4]]
+            faults = int.from_bytes(data[5:7], 'big')
+            LOG.debug("Area %d: %s Ready (%d faults)" % (area, ready_status, faults))
+        elif data[0] == 0x07: # point status
             point = int.from_bytes(data[2:4], 'big')
             self.points[point].status = data[4]
             LOG.debug("Point updated: %s", self.points[point])
