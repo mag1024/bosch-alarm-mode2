@@ -157,8 +157,8 @@ class Panel:
                     await self._connect(load_selector)
                 except asyncio.exceptions.CancelledError:
                     raise
-                except Exception as e:
-                    LOG.debug(repr(e))
+                except:
+                    logging.exception("Connection monitor exception")
 
     def _connection_status_notify(self):
         if self._connection_status_observer: self._connection_status_observer()
