@@ -61,6 +61,7 @@ class Panel:
         self._passcode = passcode
 
         self._connection = None
+        self._connection_status_observer = None
         self._last_heartbeat = None
 
         self.model = None
@@ -103,6 +104,9 @@ class Panel:
     def connection_status(self) -> bool:
         return self._connection != None
 
+    def connection_status_attach(self, observer):
+        self._connection_status_observer = observer
+
     def print(self):
         if self.model: print('Model:', self.model)
         if self.protocol_version: print('Protocol version:',
@@ -127,12 +131,14 @@ class Panel:
         self._connection = connection
         await self._authenticate()
         await self.load(load_selector)
+        self._connection_status_notify()
 
     def _on_disconnect(self):
         self._connection = None
         self._last_heartbeat = None
         for a in self.areas.values(): a.state = AREA_STATUS_UNKNOWN
         for p in self.points.values(): p.state = POINT_STATUS_UNKNOWN
+        self._connection_status_notify()
 
     async def _connection_monitor(self):
         while True:
@@ -153,6 +159,9 @@ class Panel:
                     raise
                 except Exception as e:
                     LOG.debug(repr(e))
+
+    def _connection_status_notify(self):
+        if self._connection_status_observer: self._connection_status_observer()
 
     async def _authenticate(self):
         creds = bytearray(b'\x01')  # automation user
