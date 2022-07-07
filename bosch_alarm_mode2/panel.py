@@ -30,7 +30,7 @@ class PanelEntity:
     def attach(self, observer): self._observer = observer
 
     def _notify(self):
-        if self._observer: self._observer(self)
+        if self._observer: self._observer()
 
 
 class Area(PanelEntity):
@@ -77,7 +77,7 @@ class Panel:
 
     async def connect(self, load_selector = LOAD_ALL):
         loop = asyncio.get_running_loop()
-        self._connection_monitor_task = loop.create_task(self._connection_monitor())
+        self._monitor_connection_task = loop.create_task(self._monitor_connection())
         await self._connect(load_selector)
 
     async def load(self, load_selector):
@@ -92,17 +92,18 @@ class Panel:
             await self._subscribe()
 
     async def disconnect(self):
-        if self._connection_monitor_task:
-            self._connection_monitor_task.cancel()
+        if self._monitor_connection_task:
+            self._monitor_connection_task.cancel()
             try:
-                await self._connection_monitor_task
+                await self._monitor_connection_task
             except asyncio.CancelledError:
                 pass
-            self._connection_monitor_task = None
+            finally:
+                self._monitor_connection_task = None
         if self._connection: self._connection.close()
 
     def connection_status(self) -> bool:
-        return self._connection != None
+        return self._connection != None and self.points and self.areas
 
     def connection_status_attach(self, observer):
         self._connection_status_observer = observer
@@ -128,6 +129,7 @@ class Panel:
                     connection_factory,
                     host=self._host, port=self._port, ssl=ssl_context),
                 timeout=10)
+        self._last_heartbeat = datetime.now()
         self._connection = connection
         await self._authenticate()
         await self.load(load_selector)
@@ -140,25 +142,30 @@ class Panel:
         for p in self.points.values(): p.state = POINT_STATUS_UNKNOWN
         self._connection_status_notify()
 
-    async def _connection_monitor(self):
+    async def _monitor_connection(self):
         while True:
-            await asyncio.sleep(20)
-            if self._connection:
-                heartbeat_age = timedelta(0)
-                if self._last_heartbeat:
-                    heartbeat_age = datetime.now() - self._last_heartbeat
-                if heartbeat_age > timedelta(minutes=3):
-                    LOG.debug("Heartbeat expired (%s): resetting connection.", heartbeat_age)
-                    self._connection.close()
-            else:
-                loaded = self.areas and self.points
-                load_selector = self.LOAD_STATUS if loaded else self.LOAD_ALL
-                try:
-                    await self._connect(load_selector)
-                except asyncio.exceptions.CancelledError:
-                    raise
-                except:
-                    logging.exception("Connection monitor exception")
+            try:
+                await asyncio.sleep(30)
+                await self._monitor_connection_once()
+            except asyncio.exceptions.CancelledError:
+                raise
+            except:
+                logging.exception("Connection monitor exception")
+
+    async def _monitor_connection_once(self):
+        if self._connection:
+            heartbeat_age = datetime.now() - (
+                    self._last_heartbeat or datetime.fromtimestamp(0))
+            if heartbeat_age > timedelta(minutes=3):
+                LOG.warning("Heartbeat expired (%s): resetting connection.", heartbeat_age)
+                self._connection.close()
+        else:
+            loaded = self.areas and self.points
+            load_selector = self.LOAD_STATUS if loaded else self.LOAD_ALL
+            try:
+                await self._connect(load_selector)
+            except asyncio.exceptions.TimeoutError as e:
+                LOG.debug("Connection timed out...")
 
     def _connection_status_notify(self):
         if self._connection_status_observer: self._connection_status_observer()
