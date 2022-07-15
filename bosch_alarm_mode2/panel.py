@@ -13,6 +13,11 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
 
+def _get_int8(data, offset = 0):
+    return int.from_bytes(data[offset:offset+1], 'big')
+def _get_int16(data, offset = 0):
+    return int.from_bytes(data[offset:offset+2], 'big')
+
 class PanelEntity:
     def __init__(self, name, status):
         self._observer = None
@@ -209,7 +214,7 @@ class Panel:
             data = await self._connection.send_command(name_cmd, request)
             if not data: break
             while data:
-                id = int.from_bytes(data[0:2], 'big')
+                id = _get_int16(data)
                 name, data = data[2:].split(b'\x00', 1)
                 names[id] = name.decode('ascii')
         return names
@@ -219,7 +224,7 @@ class Panel:
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
         response = await self._connection.send_command(status_cmd, request)
         while response:
-            entities[int.from_bytes(response[0:2], 'big')].status = response[2]
+            entities[_get_int16(response)].status = response[2]
             response = response[3:]
 
     async def _subscribe(self):
@@ -238,17 +243,30 @@ class Panel:
         data += IGNORE    # unused
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
+    def _area_status_consumer(self, data) -> int:
+        area = _get_int16(data)
+        ready_status = ["Not", "Part", "Full"][data[2]]
+        faults = _get_int16(data, 3)
+        LOG.debug("Area %d: %s Ready (%d faults)" % (area, ready_status, faults))
+        return 5
+
+    def _point_status_consumer(self, data) -> int:
+        point = _get_int16(data)
+        self.points[point].status = data[2]
+        LOG.debug("Point updated: %s", self.points[point])
+        return 3
+
     def _on_status_update(self, data):
-        if data[0] == 0x00: # heartbeat
-            self._last_heartbeat = datetime.now()
-        elif data[0] == 0x05: # area ready
-            area = int.from_bytes(data[2:4], 'big')
-            ready_status = ["Not", "Part", "Full"][data[4]]
-            faults = int.from_bytes(data[5:7], 'big')
-            LOG.debug("Area %d: %s Ready (%d faults)" % (area, ready_status, faults))
-        elif data[0] == 0x07: # point status
-            point = int.from_bytes(data[2:4], 'big')
-            self.points[point].status = data[4]
-            LOG.debug("Point updated: %s", self.points[point])
-        else:
-            LOG.debug("Unhandled status update: %d", data[0])
+        CONSUMERS = {
+            0x05: self._area_status_consumer,
+            0x07: self._point_status_consumer,
+        }
+        pos = 0
+        while pos < len(data):
+            (update_type, n_updates) = data[pos:pos+2]
+            pos += 2
+            if update_type == 0x00:  # heartbeat
+                 self._last_heartbeat = datetime.now()
+                 continue
+            consumer = CONSUMERS[update_type]
+            for i in range(0, n_updates): pos += consumer(data[pos:])
