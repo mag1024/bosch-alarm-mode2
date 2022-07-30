@@ -67,7 +67,7 @@ class Panel:
 
         self._connection = None
         self._connection_status_observer = None
-        self._last_heartbeat = None
+        self._last_msg = None
 
         self.model = None
         self.protocol_version = None
@@ -134,7 +134,7 @@ class Panel:
                     connection_factory,
                     host=self._host, port=self._port, ssl=ssl_context),
                 timeout=10)
-        self._last_heartbeat = datetime.now()
+        self._last_msg = datetime.now()
         self._connection = connection
         await self._authenticate()
         await self.load(load_selector)
@@ -142,7 +142,7 @@ class Panel:
 
     def _on_disconnect(self):
         self._connection = None
-        self._last_heartbeat = None
+        self._last_msg = None
         for a in self.areas.values(): a.state = AREA_STATUS_UNKNOWN
         for p in self.points.values(): p.state = POINT_STATUS_UNKNOWN
         self._connection_status_notify()
@@ -159,10 +159,9 @@ class Panel:
 
     async def _monitor_connection_once(self):
         if self._connection:
-            heartbeat_age = datetime.now() - (
-                    self._last_heartbeat or datetime.fromtimestamp(0))
-            if heartbeat_age > timedelta(minutes=3):
-                LOG.warning("Heartbeat expired (%s): resetting connection.", heartbeat_age)
+            idle_time = datetime.now() - (self._last_msg or datetime.fromtimestamp(0))
+            if idle_time > timedelta(minutes=3):
+                LOG.warning("Heartbeat expired (%s): resetting connection.", idle_time)
                 self._connection.close()
         else:
             loaded = self.areas and self.points
@@ -258,6 +257,7 @@ class Panel:
 
     def _on_status_update(self, data):
         CONSUMERS = {
+            0x00: lambda data: 0,  # heartbeat
             0x05: self._area_status_consumer,
             0x07: self._point_status_consumer,
         }
@@ -265,8 +265,6 @@ class Panel:
         while pos < len(data):
             (update_type, n_updates) = data[pos:pos+2]
             pos += 2
-            if update_type == 0x00:  # heartbeat
-                 self._last_heartbeat = datetime.now()
-                 continue
+            self._last_msg = datetime.now()
             consumer = CONSUMERS[update_type]
             for i in range(0, n_updates): pos += consumer(data[pos:])
