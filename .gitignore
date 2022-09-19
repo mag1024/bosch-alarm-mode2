@@ -1,3 +1,4 @@
 *.swp
-bosch-alarm-mode2-A6ryIiEI-py3.10
+bosch-alarm-mode2-*-py*
 __pycache__/
+dist/

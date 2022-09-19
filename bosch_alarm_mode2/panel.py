@@ -18,10 +18,20 @@ def _get_int8(data, offset = 0):
 def _get_int16(data, offset = 0):
     return int.from_bytes(data[offset:offset+2], 'big')
 
+class Observable:
+    def __init__(self):
+        self._observers = []
+
+    def attach(self, observer): self._observers.append(observer)
+    def detach(self, observer): self._observers.remove(observer)
+
+    def _notify(self):
+        for observer in self._observers: observer()
+
 class PanelEntity:
     def __init__(self, name, status):
-        self._observer = None
         self.name = name
+        self.status_observer = Observable()
         self.status = status
 
     @property
@@ -30,20 +40,44 @@ class PanelEntity:
     @status.setter
     def status(self, value):
         self._status = value
-        self._notify()
-
-    def attach(self, observer): self._observer = observer
-
-    def _notify(self):
-        if self._observer: self._observer()
-
+        self.status_observer._notify()
 
 class Area(PanelEntity):
     def __init__(self, name = None, status = AREA_STATUS_UNKNOWN):
         PanelEntity.__init__(self, name, status)
+        self.ready_observer = Observable()
+        self._set_ready(AREA_READY_NOT, 0)
+
+    @property
+    def all_ready(self): return self._ready == AREA_READY_ALL
+    @property
+    def part_ready(self): return self._ready == AREA_READY_PART
+    @property
+    def faults(self): return self._faults
+    def _set_ready(self, ready, faults):
+        self._ready = ready
+        self._faults = faults
+        self.ready_observer._notify()
+
+    def is_disarmed(self):
+        return self.status == AREA_STATUS_DISARMED
+    def is_arming(self):
+        return self.status in AREA_STATUS_ARMING
+    def is_pending(self):
+        return self.status in AREA_STATUS_PENDING
+    def is_part_armed(self):
+        return self.status in AREA_STATUS_PART_ARMED
+    def is_all_armed(self):
+        return self.status in AREA_STATUS_ALL_ARMED
+
+    def reset(self):
+        self.status = AREA_STATUS_UNKNOWN
+        self._set_ready(AREA_READY_NOT, 0)
 
     def __repr__(self):
-        return f"{self.name}: {AREA_STATUS[self.status]}"
+        return "%s: %s [%s] (%d)" % (
+            self.name, AREA_STATUS[self.status],
+            AREA_READY[self._ready], self._faults)
 
 class Point(PanelEntity):
     def __init__(self, name = None, status = POINT_STATUS_UNKNOWN):
@@ -53,6 +87,9 @@ class Point(PanelEntity):
         return self.status == POINT_STATUS_OPEN
     def is_normal(self) -> bool:
         return self.status == POINT_STATUS_NORMAL
+
+    def reset(self):
+        self.status = POINT_STATUS_UNKNOWN
 
     def __repr__(self):
         return f"{self.name}: {POINT_STATUS[self.status]}"
@@ -65,8 +102,8 @@ class Panel:
         self._port = port
         self._passcode = passcode
 
+        self.connection_status_observer = Observable()
         self._connection = None
-        self._connection_status_observer = None
         self._last_msg = None
 
         self.model = None
@@ -107,11 +144,15 @@ class Panel:
                 self._monitor_connection_task = None
         if self._connection: self._connection.close()
 
+    async def area_disarm(self, area_id):
+        await self._area_arm(area_id, AREA_ARMING_DISARM)
+    async def area_arm_part(self, area_id):
+        await self._area_arm(area_id, AREA_ARMING_PERIMETER_DELAY)
+    async def area_arm_all(self, area_id):
+        await self._area_arm(area_id, AREA_ARMING_MASTER_DELAY)
+
     def connection_status(self) -> bool:
         return self._connection != None and self.points and self.areas
-
-    def connection_status_attach(self, observer):
-        self._connection_status_observer = observer
 
     def print(self):
         if self.model: print('Model:', self.model)
@@ -138,14 +179,14 @@ class Panel:
         self._connection = connection
         await self._authenticate()
         await self.load(load_selector)
-        self._connection_status_notify()
+        self.connection_status_observer._notify()
 
     def _on_disconnect(self):
         self._connection = None
         self._last_msg = None
-        for a in self.areas.values(): a.state = AREA_STATUS_UNKNOWN
-        for p in self.points.values(): p.state = POINT_STATUS_UNKNOWN
-        self._connection_status_notify()
+        for a in self.areas.values(): a.reset()
+        for p in self.points.values(): p.reset()
+        self.connection_status_observer._notify()
 
     async def _monitor_connection(self):
         while True:
@@ -170,9 +211,6 @@ class Panel:
                 await self._connect(load_selector)
             except asyncio.exceptions.TimeoutError as e:
                 LOG.debug("Connection timed out...")
-
-    def _connection_status_notify(self):
-        if self._connection_status_observer: self._connection_status_observer()
 
     async def _authenticate(self):
         creds = bytearray(b'\x01')  # automation user
@@ -226,15 +264,22 @@ class Panel:
             entities[_get_int16(response)].status = response[2]
             response = response[3:]
 
+    async def _area_arm(self, area_id, arm_type):
+        request = bytearray([arm_type])
+        # bitmask with only i-th bit from the left being 1 (section 3.1.4)
+        request.extend(bytearray((area_id-1)//8)) # leading 0 bytes
+        request.append(1<<(8-area_id)%8) # i%8-th bit from the left (top) set
+        await self._connection.send_command(CMD.AREA_ARM, request)
+
     async def _subscribe(self):
-        IGNORE = bytearray(b'\x00')
-        SUBSCRIBE = bytearray(b'\x01')
+        IGNORE = b'\x00'
+        SUBSCRIBE = b'\x01'
         data = bytearray(b'\x01') # format
         data += SUBSCRIBE # confidence / heartbeat
         data += IGNORE    # event mem
         data += IGNORE    # event log
         data += IGNORE    # config change
-        data += IGNORE    # area on/off
+        data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
         data += IGNORE    # output status
         data += SUBSCRIBE # point status
@@ -242,23 +287,32 @@ class Panel:
         data += IGNORE    # unused
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
-    def _area_status_consumer(self, data) -> int:
-        area = _get_int16(data)
-        ready_status = ["Not", "Part", "Full"][data[2]]
+    def _area_on_off_consumer(self, data) -> int:
+        area_id = _get_int16(data)
+        area_status = self.areas[area_id].status = data[2]
+        LOG.debug("Area %d: %s" % (area_id, AREA_STATUS[area_status]))
+        return 3
+
+    def _area_ready_consumer(self, data) -> int:
+        area_id = _get_int16(data)
+        ready_status = data[2]
         faults = _get_int16(data, 3)
-        LOG.debug("Area %d: %s Ready (%d faults)" % (area, ready_status, faults))
+        self.areas[area_id]._set_ready(ready_status, faults)
+        LOG.debug("Area %d: %s (%d faults)" % (
+            area_id, AREA_READY[ready_status], faults))
         return 5
 
     def _point_status_consumer(self, data) -> int:
-        point = _get_int16(data)
-        self.points[point].status = data[2]
-        LOG.debug("Point updated: %s", self.points[point])
+        point_id = _get_int16(data)
+        self.points[point_id].status = data[2]
+        LOG.debug("Point updated: %s", self.points[point_id])
         return 3
 
     def _on_status_update(self, data):
         CONSUMERS = {
             0x00: lambda data: 0,  # heartbeat
-            0x05: self._area_status_consumer,
+            0x04: self._area_on_off_consumer,
+            0x05: self._area_ready_consumer,
             0x07: self._point_status_consumer,
         }
         pos = 0
