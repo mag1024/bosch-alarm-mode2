@@ -1,5 +1,7 @@
 A async Python library for interating with Bosch Alarm Panels supporting the "Mode 2" API.
-Some compatible models are Solution 2000/3000, B4512/B5512, B8512G/B9512G.
+Theoretically, the following models support this protocol: Solution 2000/3000, B4512/B5512, B8512G/B9512G. In practice, this library has only been tested with B8512G, and support for additional panels will probably require additional development. PRs welcome!
+
+(Home Assistant users interested in an integration that is known to work with Solution 3000 can check out [this](https://github.com/sanjay900/solution3000-home-assistant) project.)
 
 Supported features:
 - Retrieving area and point status
