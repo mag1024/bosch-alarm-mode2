@@ -221,6 +221,7 @@ class Panel:
                 await asyncio.sleep(1)
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
+                self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
             except:
