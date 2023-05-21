@@ -118,6 +118,8 @@ POINT_STATUS = {
     0xFF: "Unknown",
 }
 
+ALARM_MEMORY_PRIORITY_BURGLARY_ALARM = 0x07
+
 ALARM_MEMORY_PRIORITIES = {
     0x01: "Burglary Trouble",
     0x02: "Burglary Supervisory",

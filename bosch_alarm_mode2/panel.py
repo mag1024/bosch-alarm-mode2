@@ -65,9 +65,9 @@ class Area(PanelEntity):
     
     def _set_alarm(self, priority, state):
         if state:
-            self._alarms.add(ALARM_MEMORY_PRIORITIES[priority])
+            self._alarms.add(priority)
         else:
-            self._alarms.discard(ALARM_MEMORY_PRIORITIES[priority])
+            self._alarms.discard(priority)
         self.alarm_observer._notify()
 
     def is_disarmed(self):
@@ -80,6 +80,8 @@ class Area(PanelEntity):
         return self.status in AREA_STATUS_PART_ARMED
     def is_all_armed(self):
         return self.status in AREA_STATUS_ALL_ARMED
+    def is_triggered(self):
+        return ALARM_MEMORY_PRIORITY_BURGLARY_ALARM in self.alarms
 
     def reset(self):
         self.status = AREA_STATUS_UNKNOWN
