@@ -241,7 +241,7 @@ class Panel:
     async def _authenticate(self):
         if self.model in ["Solution 2000", "Solution 3000"]:
             creds = int(str(self._passcode).ljust(8, "F"), 16)
-            creds = creds.to_bytes(4)
+            creds = creds.to_bytes(4, "big")
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
             LOG.debug("Authentication success!")
         else:
