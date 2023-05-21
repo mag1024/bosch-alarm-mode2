@@ -119,6 +119,8 @@ class CMD:
     # Unauthenticated commands
     WHAT_ARE_YOU = 0x01
     AUTHENTICATE = 0x06
+    LOGIN_REMOTE_USER = 0x3E
+    PANEL_CAPACITIES = 0x1F
     # Area group
     AREA_STATUS = 0x26
     AREA_ARM = 0x27
