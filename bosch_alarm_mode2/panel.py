@@ -118,6 +118,8 @@ class Panel:
         self.user_count = 0
         self.keypad_count = 0
         self.door_count = 0
+        self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
+        self._all_arming_type = AREA_ARMING_MASTER_DELAY
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -161,9 +163,9 @@ class Panel:
     async def area_disarm(self, area_id):
         await self._area_arm(area_id, AREA_ARMING_DISARM)
     async def area_arm_part(self, area_id):
-        await self._area_arm(area_id, AREA_ARMING_PERIMETER_DELAY)
+        await self._area_arm(area_id, self._part_arming_type)
     async def area_arm_all(self, area_id):
-        await self._area_arm(area_id, AREA_ARMING_MASTER_DELAY)
+        await self._area_arm(area_id, self._all_arming_type)
 
     def connection_status(self) -> bool:
         return self._connection != None and self.points and self.areas
@@ -259,6 +261,12 @@ class Panel:
         data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
+        if data[0] <= 0x24:
+            self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
+            self._all_arming_type = AREA_ARMING_MASTER_DELAY
+        else:
+            self._part_arming_type = AREA_ARMING_STAY1
+            self._all_arming_type = AREA_ARMING_AWAY
 
     async def _getcapacities(self):
         data = await self._connection.send_command(CMD.PANEL_CAPACITIES)
