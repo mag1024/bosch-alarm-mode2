@@ -369,8 +369,7 @@ class Panel:
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
         response = await self._connection.send_command(status_cmd, request)
         while response:
-            entity = entities[_get_int16(response)]
-            entity.status = response[2]
+            entities[_get_int16(response)].status = response[2]
             response = response[3:]
 
     async def _area_arm(self, area_id, arm_type):
