@@ -261,12 +261,13 @@ class Panel:
         data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
+        print(data[0])
         if data[0] <= 0x24:
-            self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
-            self._all_arming_type = AREA_ARMING_MASTER_DELAY
-        else:
             self._part_arming_type = AREA_ARMING_STAY1
             self._all_arming_type = AREA_ARMING_AWAY
+        else:
+            self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
+            self._all_arming_type = AREA_ARMING_MASTER_DELAY
 
     async def _getcapacities(self):
         data = await self._connection.send_command(CMD.PANEL_CAPACITIES)
