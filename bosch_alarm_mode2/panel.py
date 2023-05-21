@@ -364,7 +364,7 @@ class Panel:
                 names[id] = name.decode('ascii')
         return names
 
-    async def _load_entity_status(self, status_cmd, entities, notify=False):
+    async def _load_entity_status(self, status_cmd, entities):
         request = bytearray()
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
         response = await self._connection.send_command(status_cmd, request)
