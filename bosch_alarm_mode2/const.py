@@ -118,6 +118,19 @@ POINT_STATUS = {
     0xFF: "Unknown",
 }
 
+ALARM_MEMORY_PRIORITIES = {
+    0x01: "Burglary Trouble",
+    0x02: "Burglary Supervisory",
+    0x03: "Gas Trouble",
+    0x04: "Gas Supervisory",
+    0x05: "Fire Trouble",
+    0x06: "Fire Supervisory",
+    0x07: "Burglary Alarm",
+    0x08: "Personal Emergency",
+    0x09: "Gas Alarm",
+    0x0A: "Fire Alarm"
+}
+
 class CMD:
     # Unauthenticated commands
     WHAT_ARE_YOU = 0x01
@@ -125,6 +138,7 @@ class CMD:
     LOGIN_REMOTE_USER = 0x3E
     PANEL_CAPACITIES = 0x1F
     # Area group
+    AREA_ALARMS_BY_PRIORITY = 0x22
     AREA_STATUS = 0x26
     AREA_ARM = 0x27
     AREA_TEXT = 0x29

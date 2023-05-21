@@ -46,7 +46,9 @@ class Area(PanelEntity):
     def __init__(self, name = None, status = AREA_STATUS_UNKNOWN):
         PanelEntity.__init__(self, name, status)
         self.ready_observer = Observable()
+        self.alarm_observer = Observable()
         self._set_ready(AREA_READY_NOT, 0)
+        self._alarms = set()
 
     @property
     def all_ready(self): return self._ready == AREA_READY_ALL
@@ -54,10 +56,19 @@ class Area(PanelEntity):
     def part_ready(self): return self._ready == AREA_READY_PART
     @property
     def faults(self): return self._faults
+    @property
+    def alarms(self): return self._alarms
     def _set_ready(self, ready, faults):
         self._ready = ready
         self._faults = faults
         self.ready_observer._notify()
+    
+    def _set_alarm(self, priority, state):
+        if state:
+            self._alarms.add(ALARM_MEMORY_PRIORITIES[priority])
+        else:
+            self._alarms.discard(ALARM_MEMORY_PRIORITIES[priority])
+        self.alarm_observer._notify()
 
     def is_disarmed(self):
         return self.status == AREA_STATUS_DISARMED
@@ -73,6 +84,7 @@ class Area(PanelEntity):
     def reset(self):
         self.status = AREA_STATUS_UNKNOWN
         self._set_ready(AREA_READY_NOT, 0)
+        self._alarms = set()
 
     def __repr__(self):
         return "%s: %s [%s] (%d)" % (
@@ -120,6 +132,41 @@ class Panel:
         self.door_count = 0
         self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_type = AREA_ARMING_MASTER_DELAY
+        self._featureProtocol01 = False
+        self._featureProtocol02 = False
+        self._featureProtocol03 = False
+        self._featureProtocol04 = False
+        self._featureProtocol05 = False
+        self._feature512BytesPacket = False
+        self._feature1460BytesPacket = False
+        self._featureCommandWhatAreYouCF01 = False
+        self._featureCommandWhatAreYouCF02 = False
+        self._featureCommandWhatAreYouCF03 = False
+        self._featureCommandWhatAreYouCF04 = False
+        self._featureCommandWhatAreYouCF05 = False
+        self._featureCommandWhatAreYouCF06 = False
+        self._featureCommandWhatAreYouCF07 = False
+        self._featureCommandRequestConfiguredAreaCF01 = False
+        self._featureCommandArmPanelAreasCF01 = False
+        self._featureCommandRequestAreaTextCF01 = False
+        self._featureCommandRequestAreaTextCF03 = False
+        self._featureCommandSetOutputStateCF01 = False
+        self._featureCommandSetOutputStateCF02 = False
+        self._featureCommandRequestOuputTextCF01 = False
+        self._featureCommandRequestOuputTextCF03 = False
+        self._featureCommandRequestPointsInAreaCF01 = False
+        self._featureCommandRequestPointTextCF01 = False
+        self._featureCommandRequestPointTextCF03 = False
+        self._featureCommandRequestConfiguredOutputsCF01 = False
+        self._featureCommandSetSubscriptionCF01 = False
+        self._featureCommandSetSubscriptionCF02 = False
+        self._featureCommandSetSubscriptionCF03 = False
+        self._featureCommandSetSubscriptionCF04 = False
+        self._featureCommandSetSubscriptionCF04 = False
+        self._featureCommandReqAlarmAreasByPriorityCF01 = False
+        self._featureCommandReqAlarmMemorySummaryCF01 = False
+        self._featureCommandReqAlarmMemoryDetailCF01 = False
+        self._featureCommandRequestProductSerialAndVersion = False
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -221,6 +268,8 @@ class Panel:
                 await asyncio.sleep(1)
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
+                for priority in ALARM_MEMORY_PRIORITIES.keys():
+                    await self._get_alarms_for_priority(priority)
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -364,6 +413,13 @@ class Panel:
                 names[id] = name.decode('ascii')
         return names
 
+    async def _get_alarms_for_priority(self, priority):
+        request = bytearray([priority])
+        data = await self._connection.send_command(CMD.AREA_ALARMS_BY_PRIORITY, request)
+        for area_id, area in self.areas.items():
+            faulted = data[(area_id-1)//8] & (1<<(8-((area_id-1) % 8))) != 0
+            area._set_alarm(priority, faulted)
+
     async def _load_entity_status(self, status_cmd, entities):
         request = bytearray()
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
@@ -376,7 +432,7 @@ class Panel:
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
         request.extend(bytearray((area_id-1)//8)) # leading 0 bytes
-        request.append(1<<(8-area_id)%8) # i%8-th bit from the left (top) set
+        request.append(1<<(8-((area_id-1) % 8))) # i%8-th bit from the left (top) set
         await self._connection.send_command(CMD.AREA_ARM, request)
 
     async def _subscribe(self):
@@ -384,7 +440,7 @@ class Panel:
         SUBSCRIBE = b'\x01'
         data = bytearray(b'\x01') # format
         data += SUBSCRIBE # confidence / heartbeat
-        data += IGNORE    # event mem
+        data += SUBSCRIBE # event mem
         data += IGNORE    # event log
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
@@ -415,10 +471,22 @@ class Panel:
         self.points[point_id].status = data[2]
         LOG.debug("Point updated: %s", self.points[point_id])
         return 3
+    
+    def _event_summary_consumer(self, data) -> int:
+        priority = data[0]
+        count = _get_int16(data, 1)
+        if count:
+            self._get_alarms_for_priority(priority)
+        else:
+            # If events have been cleared, then we can just clear all areas instead of asking the panel for more info
+            for area in self.areas.values():
+                area._set_alarm(priority, False)
+        return 3
 
     def _on_status_update(self, data):
         CONSUMERS = {
             0x00: lambda data: 0,  # heartbeat
+            0x01: self._event_summary_consumer,
             0x04: self._area_on_off_consumer,
             0x05: self._area_ready_consumer,
             0x07: self._point_status_consumer,
