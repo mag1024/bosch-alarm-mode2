@@ -268,8 +268,7 @@ class Panel:
                 await asyncio.sleep(1)
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
-                for priority in ALARM_MEMORY_PRIORITIES.keys():
-                    await self._get_alarms_for_priority(priority)
+                await self._get_alarm_status()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -413,12 +412,35 @@ class Panel:
                 names[id] = name.decode('ascii')
         return names
 
-    async def _get_alarms_for_priority(self, priority):
+    async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
         request = bytearray([priority])
-        data = await self._connection.send_command(CMD.AREA_ALARMS_BY_PRIORITY, request)
-        for area_id, area in self.areas.items():
-            faulted = data[(area_id-1)//8] & (1<<(8-((area_id-1) % 8))) != 0
-            area._set_alarm(priority, faulted)
+        if last_area and last_point:
+            request.append(last_area.to_bytes(2, 'big'))
+            request.append(last_point.to_bytes(2, 'big'))
+        response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
+        while response_detail:
+            area = _get_int16(response_detail)
+            # item_type = response_detail[2]
+            point = _get_int16(response_detail, 3)
+            if point == 0xFFFF:
+                await self._get_alarms_for_priority(priority, area, point)
+            if area in self.areas:
+                self.areas[area]._set_alarm(priority, True)
+            else:
+                print(f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
+            response_detail = response_detail[5:]
+
+    async def _get_alarm_status(self):
+        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY)
+        for priority in ALARM_MEMORY_PRIORITIES.keys():
+            i = (priority - 1) * 2
+            count = _get_int16(data, i)
+            if count:
+                self._get_alarms_for_priority(priority)
+            else:
+                # If events have been cleared, then we can just clear all areas instead of asking the panel for more info
+                for area in self.areas.values():
+                    area._set_alarm(priority, False)
 
     async def _load_entity_status(self, status_cmd, entities):
         request = bytearray()
@@ -432,7 +454,7 @@ class Panel:
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
         request.extend(bytearray((area_id-1)//8)) # leading 0 bytes
-        request.append(1<<(8-((area_id-1) % 8))) # i%8-th bit from the left (top) set
+        request.append(1<<(7-((area_id-1) % 8))) # i%8-th bit from the left (top) set
         await self._connection.send_command(CMD.AREA_ARM, request)
 
     async def _subscribe(self):
