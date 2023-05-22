@@ -58,6 +58,10 @@ class Area(PanelEntity):
     def faults(self): return self._faults
     @property
     def alarms(self): return self._alarms
+
+    def formatted_alarms(self): 
+        return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
+    
     def _set_ready(self, ready, faults):
         self._ready = ready
         self._faults = faults
