@@ -57,10 +57,7 @@ class Area(PanelEntity):
     @property
     def faults(self): return self._faults
     @property
-    def alarms(self): return self._alarms
-
-    def formatted_alarms(self): 
-        return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
+    def alarms(self): return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
     
     def _set_ready(self, ready, faults):
         self._ready = ready
@@ -114,16 +111,16 @@ class Point(PanelEntity):
 
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
-    def __init__(self, host, port, passcode, legacymode):
+    def __init__(self, host, port, passcode):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
         self._passcode = passcode
-        self._legacymode = legacymode
 
         self.connection_status_observer = Observable()
         self._connection = None
         self._last_msg = None
+        self._poll_task = None
 
         self.model = None
         self.protocol_version = None
@@ -138,41 +135,8 @@ class Panel:
         self.door_count = 0
         self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_type = AREA_ARMING_MASTER_DELAY
-        self._featureProtocol01 = False
         self._featureProtocol02 = False
-        self._featureProtocol03 = False
-        self._featureProtocol04 = False
-        self._featureProtocol05 = False
-        self._feature512BytesPacket = False
-        self._feature1460BytesPacket = False
-        self._featureCommandWhatAreYouCF01 = False
-        self._featureCommandWhatAreYouCF02 = False
-        self._featureCommandWhatAreYouCF03 = False
-        self._featureCommandWhatAreYouCF04 = False
-        self._featureCommandWhatAreYouCF05 = False
-        self._featureCommandWhatAreYouCF06 = False
-        self._featureCommandWhatAreYouCF07 = False
-        self._featureCommandRequestConfiguredAreaCF01 = False
-        self._featureCommandArmPanelAreasCF01 = False
-        self._featureCommandRequestAreaTextCF01 = False
         self._featureCommandRequestAreaTextCF03 = False
-        self._featureCommandSetOutputStateCF01 = False
-        self._featureCommandSetOutputStateCF02 = False
-        self._featureCommandRequestOuputTextCF01 = False
-        self._featureCommandRequestOuputTextCF03 = False
-        self._featureCommandRequestPointsInAreaCF01 = False
-        self._featureCommandRequestPointTextCF01 = False
-        self._featureCommandRequestPointTextCF03 = False
-        self._featureCommandRequestConfiguredOutputsCF01 = False
-        self._featureCommandSetSubscriptionCF01 = False
-        self._featureCommandSetSubscriptionCF02 = False
-        self._featureCommandSetSubscriptionCF03 = False
-        self._featureCommandSetSubscriptionCF04 = False
-        self._featureCommandSetSubscriptionCF04 = False
-        self._featureCommandReqAlarmAreasByPriorityCF01 = False
-        self._featureCommandReqAlarmMemorySummaryCF01 = False
-        self._featureCommandReqAlarmMemoryDetailCF01 = False
-        self._featureCommandRequestProductSerialAndVersion = False
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -188,7 +152,7 @@ class Panel:
         if load_selector & self.LOAD_BASIC_INFO:
             await self._basicinfo()
         if load_selector & self.LOAD_ENTITIES:
-            await self._getcapacities()
+            await self._load_capacities()
             await self._load_areas()
             await self._load_points()
         if load_selector & self.LOAD_STATUS:
@@ -211,6 +175,14 @@ class Panel:
                 pass
             finally:
                 self._monitor_connection_task = None
+        if self._poll_task:
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._poll_task = None
         if self._connection: self._connection.close()
 
     async def area_disarm(self, area_id):
@@ -294,23 +266,29 @@ class Panel:
                 await self._connect(load_selector)
             except asyncio.exceptions.TimeoutError as e:
                 LOG.debug("Connection timed out...")
-
+    
+    async def _login_remote_user(self):
+        creds = int(str(self._passcode).ljust(8, "F"), 16)
+        creds = creds.to_bytes(4, "big")
+        await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
+        LOG.debug("Authentication success!")
+    
+    async def _authenticate_automation(self):
+        creds = bytearray(b'\x01')  # automation user
+        creds.extend(map(ord, self._passcode))
+        creds.append(0x00) # null terminate
+        result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
+        if result != b'\x01':
+            self._connection.close()
+            error = ["Not Authorized", "Authorized", "Max Connections"][result[0]]
+            raise PermissionError("Authentication failed: " + error)
+        LOG.debug("Authentication success!")
+    
     async def _authenticate(self):
         if self.model in ["Solution 2000", "Solution 3000"]:
-            creds = int(str(self._passcode).ljust(8, "F"), 16)
-            creds = creds.to_bytes(4, "big")
-            await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
-            LOG.debug("Authentication success!")
+            await self._login_remote_user()
         else:
-            creds = bytearray(b'\x01')  # automation user
-            creds.extend(map(ord, self._passcode))
-            creds.append(0x00) # null terminate
-            result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
-            if result != b'\x01':
-                self._connection.close()
-                error = ["Not Authorized", "Authorized", "Max Connections"][result[0]]
-                raise PermissionError("Authentication failed: " + error)
-            LOG.debug("Authentication success!")
+            await self._authenticate_automation()
 
     async def _model(self):
         data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
@@ -324,7 +302,7 @@ class Panel:
             self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_type = AREA_ARMING_MASTER_DELAY
 
-    async def _getcapacities(self):
+    async def _load_capacities(self):
         data = await self._connection.send_command(CMD.PANEL_CAPACITIES)
         self._panel_id = data[0]
         self.area_count = _get_int16(data, 1)
@@ -336,54 +314,20 @@ class Panel:
 
     async def _basicinfo(self):
         commandformat = bytearray()
-        if not self._legacymode:
-            commandformat.append(3)
+        commandformat.append(3)
         
         data = await self._connection.send_command(CMD.WHAT_ARE_YOU, commandformat)
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]: LOG.warning('busy flag: %d', data[13])
-        if not self._legacymode:
-            bitmask = data[23:].ljust(33, b'\0')
-            self._featureProtocol01 = (bitmask[0] & 0x80) != 0
-            self._featureProtocol02 = (bitmask[0] & 0x40) != 0
-            self._featureProtocol03 = (bitmask[0] & 0x20) != 0
-            self._featureProtocol04 = (bitmask[0] & 0x10) != 0
-            self._featureProtocol05 = (bitmask[0] & 0x08) != 0
-            self._feature512BytesPacket = (bitmask[0] & 0x02) != 0
-            self._feature1460BytesPacket = (bitmask[0] & 0x01) != 0
-            self._featureCommandWhatAreYouCF01 = (bitmask[1] & 0x80) != 0
-            self._featureCommandWhatAreYouCF02 = (bitmask[1] & 0x40) != 0
-            self._featureCommandWhatAreYouCF03 = (bitmask[1] & 0x20) != 0
-            self._featureCommandWhatAreYouCF04 = (bitmask[27] & 0x20) != 0
-            self._featureCommandWhatAreYouCF05 = (bitmask[27] & 0x10) != 0
-            self._featureCommandWhatAreYouCF06 = (bitmask[27] & 0x08) != 0
-            self._featureCommandWhatAreYouCF07 = (bitmask[30] & 0x10) != 0
-            self._featureCommandRequestConfiguredAreaCF01 = (bitmask[6] & 0x10) != 0
-            self._featureCommandArmPanelAreasCF01 = (bitmask[7] & 0x80) != 0
-            self._featureCommandRequestAreaTextCF01 = (bitmask[7] & 0x20) != 0
-            self._featureCommandRequestAreaTextCF03 = (bitmask[7] & 0x08) != 0
-            self._featureCommandSetOutputStateCF01 = (bitmask[8] & 0x01) != 0
-            self._featureCommandSetOutputStateCF02 = (bitmask[9] & 0x80) != 0
-            self._featureCommandRequestOuputTextCF01 = (bitmask[9] & 0x40) != 0
-            self._featureCommandRequestOuputTextCF03 = (bitmask[9] & 0x10) != 0
-            self._featureCommandRequestPointsInAreaCF01 = (bitmask[10] & 0x40) != 0
-            self._featureCommandRequestPointTextCF01 = (bitmask[11] & 0x80) != 0
-            self._featureCommandRequestPointTextCF03 = (bitmask[11] & 0x20) != 0
-            self._featureCommandRequestConfiguredOutputsCF01 = (bitmask[8] & 0x04) != 0
-            self._featureCommandSetSubscriptionCF01 = (bitmask[16] & 0x20) != 0
-            self._featureCommandSetSubscriptionCF02 = (bitmask[24] & 0x40) != 0
-            self._featureCommandSetSubscriptionCF03 = (bitmask[26] & 0x01) != 0
-            self._featureCommandSetSubscriptionCF04 = (bitmask[28] & 0x80) != 0
-            self._featureCommandSetSubscriptionCF04 = (bitmask[29] & 0x01) != 0
-            self._featureCommandReqAlarmAreasByPriorityCF01 = (bitmask[5] & 0x01) != 0
-            self._featureCommandReqAlarmMemorySummaryCF01 = (bitmask[2] & 0x20) != 0
-            self._featureCommandReqAlarmMemoryDetailCF01 =(bitmask[6] & 0x40) != 0
-            self._featureCommandRequestProductSerialAndVersion = (bitmask[11] & 0x04) != 0
-            if self._featureCommandRequestProductSerialAndVersion:
-                data = await self._connection.send_command(
-                        CMD.PRODUCT_SERIAL, b'\x00\x00')
-                self.serial_number = int.from_bytes(data[0:6], 'big')
+        bitmask = data[23:].ljust(33, b'\0')
+        self._featureProtocol02 = (bitmask[0] & 0x40) != 0
+        self._featureCommandRequestAreaTextCF03 = (bitmask[7] & 0x08) != 0
+        # Check if serial read command is supported before sending it
+        if (bitmask[11] & 0x04) != 0:
+            data = await self._connection.send_command(
+                    CMD.PRODUCT_SERIAL, b'\x00\x00')
+            self.serial_number = int.from_bytes(data[0:6], 'big')
 
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, self.area_count)
@@ -393,30 +337,38 @@ class Panel:
         names = await self._load_names(CMD.POINT_TEXT, self.point_count)
         self.points = {id: Point(name) for id, name in names.items()}
 
-    async def _load_names(self, name_cmd, max) -> dict[int, str]:
+    async def _load_names_cf03(self, name_cmd) -> dict[int, str]:
         names = {}
         id = 0
-        if self._featureCommandRequestAreaTextCF03:
-            while True:
-                request = bytearray(id.to_bytes(2, 'big'))
-                request.append(0x00)  # primary language
-                request.append(0x01)  # return many
-                data = await self._connection.send_command(name_cmd, request)
-                if not data: break
-                while data:
-                    id = _get_int16(data)
-                    name, data = data[2:].split(b'\x00', 1)
-                    names[id] = name.decode('ascii')
-        else:
-            for id in range(1, max+1):
-                request = bytearray(id.to_bytes(2, 'big'))
-                request.append(0x00)  # primary language
-                request.append(0x01)  # return many
-                data = await self._connection.send_command(name_cmd, request)
-                name = data.split(b'\x00', 1)[0]
-                if not name: break
+        while True:
+            request = bytearray(id.to_bytes(2, 'big'))
+            request.append(0x00)  # primary language
+            request.append(0x01)  # return many
+            data = await self._connection.send_command(name_cmd, request)
+            if not data: break
+            while data:
+                id = _get_int16(data)
+                name, data = data[2:].split(b'\x00', 1)
                 names[id] = name.decode('ascii')
         return names
+
+    async def _load_names_cf01(self, name_cmd, max) -> dict[int, str]:
+        names = {}
+        for id in range(1, max+1):
+            request = bytearray(id.to_bytes(2, 'big'))
+            request.append(0x00)  # primary language
+            request.append(0x01)  # return many
+            data = await self._connection.send_command(name_cmd, request)
+            name = data.split(b'\x00', 1)[0]
+            if not name: break
+            names[id] = name.decode('ascii')
+        return names
+
+    async def _load_names(self, name_cmd, max) -> dict[int, str]:
+        if self._featureCommandRequestAreaTextCF03:
+            return await self._load_names_cf03(name_cmd)
+        
+        return await self._load_names_cf01(name_cmd, max)
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
         request = bytearray([priority])

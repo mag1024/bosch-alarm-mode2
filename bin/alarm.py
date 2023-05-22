@@ -19,7 +19,7 @@ logging.basicConfig(stream = sys.stdout,
                     level = logging.DEBUG)
 
 loop = asyncio.new_event_loop()
-panel = Panel(host=args.host, port=args.port, passcode=args.passcode, legacymode=False)
+panel = Panel(host=args.host, port=args.port, passcode=args.passcode)
 try:
     loop.run_until_complete(panel.connect())
     loop.run_forever()
