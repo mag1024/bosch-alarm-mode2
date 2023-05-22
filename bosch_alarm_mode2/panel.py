@@ -500,7 +500,8 @@ class Panel:
         priority = data[0]
         count = _get_int16(data, 1)
         if count:
-            self._get_alarms_for_priority(priority)
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._get_alarms_for_priority(priority))
         else:
             # If events have been cleared, then we can just clear all areas instead of asking the panel for more info
             for area in self.areas.values():
