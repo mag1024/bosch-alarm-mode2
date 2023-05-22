@@ -81,7 +81,7 @@ class Area(PanelEntity):
     def is_all_armed(self):
         return self.status in AREA_STATUS_ALL_ARMED
     def is_triggered(self):
-        return ALARM_MEMORY_PRIORITY_BURGLARY_ALARM in self.alarms
+        return (self.is_part_armed() or self.is_all_armed()) and ALARM_MEMORY_PRIORITY_BURGLARY_ALARM in self.alarms
 
     def reset(self):
         self.status = AREA_STATUS_UNKNOWN
@@ -438,7 +438,7 @@ class Panel:
             i = (priority - 1) * 2
             count = _get_int16(data, i)
             if count:
-                self._get_alarms_for_priority(priority)
+                await self._get_alarms_for_priority(priority)
             else:
                 # If events have been cleared, then we can just clear all areas instead of asking the panel for more info
                 for area in self.areas.values():
