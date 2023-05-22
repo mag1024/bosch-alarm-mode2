@@ -158,7 +158,7 @@ class Panel:
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
-            if self._featureCommandSetSubscriptionCF01:
+            if self._featureProtocol02:
                 await self._subscribe()
             else:
                 loop = asyncio.get_running_loop()
