@@ -340,7 +340,6 @@ class Panel:
         for id in range(1, 255):
             request = bytearray(id.to_bytes(2, 'big'))
             request.append(0x00)  # primary language
-            request.append(0x01)  # return many
             data = await self._connection.send_command(name_cmd, request)
             name = data.split(b'\x00', 1)[0]
             if not name: break
