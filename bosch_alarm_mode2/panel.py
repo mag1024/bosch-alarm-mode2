@@ -127,12 +127,6 @@ class Panel:
         self.serial_number = None
         self.areas = {}
         self.points = {}
-        self.area_count = 0
-        self.point_count = 0
-        self.output_count = 0
-        self.user_count = 0
-        self.keypad_count = 0
-        self.door_count = 0
         self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_type = AREA_ARMING_MASTER_DELAY
         self._featureProtocol02 = False
@@ -152,7 +146,6 @@ class Panel:
         if load_selector & self.LOAD_BASIC_INFO:
             await self._basicinfo()
         if load_selector & self.LOAD_ENTITIES:
-            await self._load_capacities()
             await self._load_areas()
             await self._load_points()
         if load_selector & self.LOAD_STATUS:
@@ -302,16 +295,6 @@ class Panel:
             self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_type = AREA_ARMING_MASTER_DELAY
 
-    async def _load_capacities(self):
-        data = await self._connection.send_command(CMD.PANEL_CAPACITIES)
-        self._panel_id = data[0]
-        self.area_count = _get_int16(data, 1)
-        self.point_count = _get_int16(data, 3)
-        self.output_count = _get_int16(data, 5)
-        self.user_count = _get_int16(data, 7)
-        self.keypad_count = _get_int16(data, 9)
-        self.door_count = _get_int16(data, 11)
-
     async def _basicinfo(self):
         commandformat = bytearray()
         commandformat.append(3)
@@ -330,11 +313,11 @@ class Panel:
             self.serial_number = int.from_bytes(data[0:6], 'big')
 
     async def _load_areas(self):
-        names = await self._load_names(CMD.AREA_TEXT, self.area_count)
+        names = await self._load_names(CMD.AREA_TEXT)
         self.areas = {id: Area(name) for id, name in names.items()}
 
     async def _load_points(self):
-        names = await self._load_names(CMD.POINT_TEXT, self.point_count)
+        names = await self._load_names(CMD.POINT_TEXT)
         self.points = {id: Point(name) for id, name in names.items()}
 
     async def _load_names_cf03(self, name_cmd) -> dict[int, str]:
@@ -352,9 +335,9 @@ class Panel:
                 names[id] = name.decode('ascii')
         return names
 
-    async def _load_names_cf01(self, name_cmd, max) -> dict[int, str]:
+    async def _load_names_cf01(self, name_cmd) -> dict[int, str]:
         names = {}
-        for id in range(1, max+1):
+        for id in range(1, 255):
             request = bytearray(id.to_bytes(2, 'big'))
             request.append(0x00)  # primary language
             request.append(0x01)  # return many
@@ -364,11 +347,11 @@ class Panel:
             names[id] = name.decode('ascii')
         return names
 
-    async def _load_names(self, name_cmd, max) -> dict[int, str]:
+    async def _load_names(self, name_cmd) -> dict[int, str]:
         if self._featureCommandRequestAreaTextCF03:
             return await self._load_names_cf03(name_cmd)
         
-        return await self._load_names_cf01(name_cmd, max)
+        return await self._load_names_cf01(name_cmd)
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
         request = bytearray([priority])
