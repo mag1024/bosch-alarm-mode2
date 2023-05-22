@@ -82,7 +82,7 @@ class Area(PanelEntity):
     def is_all_armed(self):
         return self.status in AREA_STATUS_ALL_ARMED
     def is_triggered(self):
-        return (self.is_part_armed() or self.is_all_armed()) and ALARM_MEMORY_PRIORITY_BURGLARY_ALARM in self.alarms
+        return (self.is_part_armed() or self.is_all_armed()) and self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
 
     def reset(self):
         self.status = AREA_STATUS_UNKNOWN
