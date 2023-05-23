@@ -138,17 +138,16 @@ class CMD:
     WHAT_ARE_YOU = 0x01
     AUTHENTICATE = 0x06
     LOGIN_REMOTE_USER = 0x3E
-    # Area / Point Counts
-    REQUEST_CONFIGURED_AREAS = 0x24
-    REQUEST_CONFIGURED_POINTS = 0x35
     # Alarm memory details
     ALARM_MEMORY_SUMMARY = 0x08
     ALARM_MEMORY_DETAIL = 0x23
     # Area group
+    REQUEST_CONFIGURED_AREAS = 0x24
     AREA_STATUS = 0x26
     AREA_ARM = 0x27
     AREA_TEXT = 0x29
     # Point group
+    REQUEST_CONFIGURED_POINTS = 0x35
     POINT_STATUS = 0x38
     POINT_TEXT = 0x3C
     # System group

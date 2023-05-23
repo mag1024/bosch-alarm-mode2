@@ -111,11 +111,12 @@ class Point(PanelEntity):
 
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
-    def __init__(self, host, port, passcode):
+    def __init__(self, host, port, passcode, arming_code=None):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
         self._passcode = passcode
+        self._arming_code=arming_code
 
         self.connection_status_observer = Observable()
         self._connection = None
@@ -178,12 +179,15 @@ class Panel:
                 self._poll_task = None
         if self._connection: self._connection.close()
 
-    async def area_disarm(self, area_id):
-        await self._area_arm(area_id, AREA_ARMING_DISARM)
-    async def area_arm_part(self, area_id):
-        await self._area_arm(area_id, self._part_arming_type)
-    async def area_arm_all(self, area_id):
-        await self._area_arm(area_id, self._all_arming_type)
+    async def area_disarm(self, area_id, code):
+        await self._area_arm(area_id, AREA_ARMING_DISARM, code)
+    async def area_arm_part(self, area_id, code):
+        await self._area_arm(area_id, self._part_arming_type, code)
+    async def area_arm_all(self, area_id, code):
+        await self._area_arm(area_id, self._all_arming_type, code)
+
+    def has_arming_code(self) -> bool:
+        return self._arming_code != None
 
     def connection_status(self) -> bool:
         return self._connection != None and self.points and self.areas
@@ -408,7 +412,9 @@ class Panel:
             entities[_get_int16(response)].status = response[2]
             response = response[3:]
 
-    async def _area_arm(self, area_id, arm_type):
+    async def _area_arm(self, area_id, arm_type, code):
+        if self._arming_code != None and code != self._arming_code:
+            return
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
         request.extend(bytearray((area_id-1)//8)) # leading 0 bytes
