@@ -305,6 +305,7 @@ class Panel:
         if data[13]: LOG.warning('busy flag: %d', data[13])
         bitmask = data[23:].ljust(33, b'\0')
         self._featureProtocol02 = (bitmask[0] & 0x40) != 0
+        self._featureCommandRequestAreaTextCF01 = (bitmask[7] & 0x20) != 0
         self._featureCommandRequestAreaTextCF03 = (bitmask[7] & 0x08) != 0
         # Check if serial read command is supported before sending it
         if (bitmask[11] & 0x04) != 0:
@@ -313,11 +314,11 @@ class Panel:
             self.serial_number = int.from_bytes(data[0:6], 'big')
 
     async def _load_areas(self):
-        names = await self._load_names(CMD.AREA_TEXT)
+        names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
         self.areas = {id: Area(name) for id, name in names.items()}
 
     async def _load_points(self):
-        names = await self._load_names(CMD.POINT_TEXT)
+        names = await self._load_names(CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, "POINT")
         self.points = {id: Point(name) for id, name in names.items()}
 
     async def _load_names_cf03(self, name_cmd) -> dict[int, str]:
@@ -335,22 +336,39 @@ class Panel:
                 names[id] = name.decode('ascii')
         return names
 
-    async def _load_names_cf01(self, name_cmd) -> dict[int, str]:
-        names = {}
-        for id in range(1, 255):
+    async def _load_names_cf01(self, name_cmd, names) -> dict[int, str]:
+        for id in names.keys():
             request = bytearray(id.to_bytes(2, 'big'))
             request.append(0x00)  # primary language
             data = await self._connection.send_command(name_cmd, request)
             name = data.split(b'\x00', 1)[0]
             if not name: break
             names[id] = name.decode('ascii')
+        print(names)
         return names
 
-    async def _load_names(self, name_cmd) -> dict[int, str]:
+    async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
         if self._featureCommandRequestAreaTextCF03:
             return await self._load_names_cf03(name_cmd)
         
-        return await self._load_names_cf01(name_cmd)
+        # CF01 will return names, even ones we don't have authrority over. This will give us a list of all
+        # Supported names and then we can update the names if cf01 is available
+        data = await self._connection.send_command(config_cmd)
+        names = {}
+        index = 0
+        while data:
+            b = data.pop(0)
+            for i in range(8):
+                id = index + (8 - i)
+                if b & 1 != 0:
+                    names[id] = f"{type}{id}"
+                b >>= 1
+            index+=8
+        if self._featureCommandRequestAreaTextCF01:
+            return await self._load_names_cf01(name_cmd, names)
+
+        # And then if CF01 isn't available, we can just return a list of names
+        return names
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
         request = bytearray([priority])
