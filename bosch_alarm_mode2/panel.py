@@ -430,7 +430,7 @@ class Panel:
         data = bytearray(b'\x01') # format
         data += SUBSCRIBE # confidence / heartbeat
         data += SUBSCRIBE # event mem
-        data += IGNORE # event log
+        data += IGNORE    # event log
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
