@@ -37,6 +37,7 @@ class PanelEntity:
     @property
     def status(self):
         return self._status
+
     @status.setter
     def status(self, value):
         self._status = value
@@ -58,12 +59,12 @@ class Area(PanelEntity):
     def faults(self): return self._faults
     @property
     def alarms(self): return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
-    
+
     def _set_ready(self, ready, faults):
         self._ready = ready
         self._faults = faults
         self.ready_observer._notify()
-    
+
     def _set_alarm(self, priority, state):
         if state:
             self._alarms.add(priority)
@@ -82,7 +83,7 @@ class Area(PanelEntity):
     def is_all_armed(self):
         return self.status in AREA_STATUS_ALL_ARMED
     def is_triggered(self):
-        return (self.is_part_armed() or self.is_all_armed()) and self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
+        return self.status in AREA_STATUS_ARMED and self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
 
     def reset(self):
         self.status = AREA_STATUS_UNKNOWN
@@ -100,6 +101,7 @@ class Point(PanelEntity):
 
     def is_open(self) -> bool:
         return self.status == POINT_STATUS_OPEN
+
     def is_normal(self) -> bool:
         return self.status == POINT_STATUS_NORMAL
 
@@ -111,12 +113,12 @@ class Point(PanelEntity):
 
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
-    def __init__(self, host, port, passcode, arming_code=None):
+
+    def __init__(self, host, port, passcode):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
         self._passcode = passcode
-        self._arming_code=arming_code
 
         self.connection_status_observer = Observable()
         self._connection = None
@@ -128,10 +130,11 @@ class Panel:
         self.serial_number = None
         self.areas = {}
         self.points = {}
-        self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
-        self._all_arming_type = AREA_ARMING_MASTER_DELAY
-        self._featureProtocol02 = False
-        self._featureCommandRequestAreaTextCF03 = False
+        self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
+        self._all_arming_id = AREA_ARMING_MASTER_DELAY
+        self._supports_subscriptions = False
+        self._supports_command_request_area_text_cf01 = False
+        self._supports_command_request_area_text_cf03 = False
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -152,13 +155,13 @@ class Panel:
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
-            if self._featureProtocol02:
+            if self._supports_subscriptions:
                 await self._subscribe()
             else:
                 loop = asyncio.get_running_loop()
                 self._poll_task = loop.create_task(self._poll())
-                print("Panel does not support subscriptions, falling back to polling")
-
+                LOG.info(
+                    "Panel does not support subscriptions, falling back to polling")
 
     async def disconnect(self):
         if self._monitor_connection_task:
@@ -179,23 +182,21 @@ class Panel:
                 self._poll_task = None
         if self._connection: self._connection.close()
 
-    async def area_disarm(self, area_id, code):
-        await self._area_arm(area_id, AREA_ARMING_DISARM, code)
-    async def area_arm_part(self, area_id, code):
-        await self._area_arm(area_id, self._part_arming_type, code)
-    async def area_arm_all(self, area_id, code):
-        await self._area_arm(area_id, self._all_arming_type, code)
+    async def area_disarm(self, area_id):
+        await self._area_arm(area_id, AREA_ARMING_DISARM)
 
-    def has_arming_code(self) -> bool:
-        return self._arming_code != None
+    async def area_arm_part(self, area_id):
+        await self._area_arm(area_id, self._partial_arming_id)
+
+    async def area_arm_all(self, area_id):
+        await self._area_arm(area_id, self._all_arming_id)
 
     def connection_status(self) -> bool:
         return self._connection != None and self.points and self.areas
 
     def print(self):
         if self.model: print('Model:', self.model)
-        if self.protocol_version: print('Protocol version:',
-                self.protocol_version)
+        if self.protocol_version: print('Protocol version:', self.protocol_version)
         if self.serial_number: print('Serial number:', self.serial_number)
         if self.areas:
             print('Areas:')
@@ -206,7 +207,7 @@ class Panel:
 
     async def _connect(self, load_selector):
         LOG.info('Connecting to %s:%d...', self._host, self._port)
-        connection_factory = lambda: Connection(
+        def connection_factory(): return Connection(
                 self._passcode, self._on_status_update, self._on_disconnect)
         transport, connection = await asyncio.wait_for(
                 asyncio.get_running_loop().create_connection(
@@ -215,7 +216,6 @@ class Panel:
                 timeout=10)
         self._last_msg = datetime.now()
         self._connection = connection
-        await self._model()
         await self._authenticate()
         await self.load(load_selector)
         self.connection_status_observer._notify()
@@ -223,8 +223,10 @@ class Panel:
     def _on_disconnect(self):
         self._connection = None
         self._last_msg = None
-        for a in self.areas.values(): a.reset()
-        for p in self.points.values(): p.reset()
+        for a in self.areas.values():
+            a.reset()
+        for p in self.points.values():
+            p.reset()
         self.connection_status_observer._notify()
 
     async def _monitor_connection(self):
@@ -263,58 +265,59 @@ class Panel:
                 await self._connect(load_selector)
             except asyncio.exceptions.TimeoutError as e:
                 LOG.debug("Connection timed out...")
-    
+
     async def _login_remote_user(self):
         creds = int(str(self._passcode).ljust(8, "F"), 16)
         creds = creds.to_bytes(4, "big")
         await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
-        LOG.debug("Authentication success!")
-    
-    async def _authenticate_automation(self):
+
+    async def _authenticate(self):
         creds = bytearray(b'\x01')  # automation user
         creds.extend(map(ord, self._passcode))
-        creds.append(0x00) # null terminate
+        creds.append(0x00)  # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
         if result != b'\x01':
-            self._connection.close()
-            error = ["Not Authorized", "Authorized", "Max Connections"][result[0]]
-            raise PermissionError("Authentication failed: " + error)
+            if result[0] == 0x00:
+                if self._passcode.isnumeric():
+                    LOG.info("Authentication failed, trying remote user")
+                    try:
+                        await self._login_remote_user()
+                        LOG.debug("Authentication success!")
+                        return
+                    except Exception:
+                        pass
+                self._connection.close()
+                error = ["Not Authorized", "Authorized",
+                        "Max Connections"][result[0]]
+                raise PermissionError("Authentication failed: " + error)
         LOG.debug("Authentication success!")
-    
-    async def _authenticate(self):
-        if self.model in ["Solution 2000", "Solution 3000"]:
-            await self._login_remote_user()
-        else:
-            await self._authenticate_automation()
-
-    async def _model(self):
-        data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
-        self.model = PANEL_MODEL[data[0]]
-        self.protocol_version = 'v%d.%d' % (data[5], data[6])
-        # Solution and AMAX panels use one set of arming types, B series panels use another.
-        if data[0] <= 0x24:
-            self._part_arming_type = AREA_ARMING_STAY1
-            self._all_arming_type = AREA_ARMING_AWAY
-        else:
-            self._part_arming_type = AREA_ARMING_PERIMETER_DELAY
-            self._all_arming_type = AREA_ARMING_MASTER_DELAY
+            
 
     async def _basicinfo(self):
-        commandformat = bytearray()
-        commandformat.append(3)
-        
-        data = await self._connection.send_command(CMD.WHAT_ARE_YOU, commandformat)
+        try:
+            data = await self._connection.send_command(CMD.WHAT_ARE_YOU, bytearray([3]))
+        except Exception:
+            # If the panel doesn't support CF03, then use CF01
+            data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
-        if data[13]: LOG.warning('busy flag: %d', data[13])
+        if data[13]:
+            LOG.warning('busy flag: %d', data[13])
         bitmask = data[23:].ljust(33, b'\0')
-        self._featureProtocol02 = (bitmask[0] & 0x40) != 0
-        self._featureCommandRequestAreaTextCF01 = (bitmask[7] & 0x20) != 0
-        self._featureCommandRequestAreaTextCF03 = (bitmask[7] & 0x08) != 0
+        # Solution and AMAX panels use one set of arming types, B series panels use another.
+        if data[0] <= 0x24:
+            self._partial_arming_id = AREA_ARMING_STAY1
+            self._all_arming_id = AREA_ARMING_AWAY
+        else:
+            self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
+            self._all_arming_id = AREA_ARMING_MASTER_DELAY
+        self._supports_subscriptions = (bitmask[0] & 0x40) != 0
+        self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
+        self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
         # Check if serial read command is supported before sending it
         if (bitmask[11] & 0x04) != 0:
             data = await self._connection.send_command(
-                    CMD.PRODUCT_SERIAL, b'\x00\x00')
+                CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
 
     async def _load_areas(self):
@@ -349,7 +352,7 @@ class Panel:
             names[id] = name.decode('ascii')
         return names
 
-    async def _load_configured_names(self, config_cmd, type):
+    async def _load_authorised_entities(self, config_cmd, type):
         data = await self._connection.send_command(config_cmd)
         names = {}
         index = 0
@@ -360,15 +363,16 @@ class Panel:
                 if b & 1 != 0:
                     names[id] = f"{type}{id}"
                 b >>= 1
-            index+=8
+            index += 8
         return names
-    async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
-        if self._featureCommandRequestAreaTextCF03:
-            return await self._load_names_cf03(name_cmd)
-        
-        names = await self._load_configured_names(config_cmd, type)
 
-        if self._featureCommandRequestAreaTextCF01:
+    async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
+        if self._supports_command_request_area_text_cf03:
+            return await self._load_names_cf03(name_cmd)
+
+        names = await self._load_authorised_entities(config_cmd, type)
+
+        if self._supports_command_request_area_text_cf01:
             return await self._load_names_cf01(name_cmd, names)
 
         # And then if CF01 isn't available, we can just return a list of names
@@ -389,7 +393,8 @@ class Panel:
             if area in self.areas:
                 self.areas[area]._set_alarm(priority, True)
             else:
-                print(f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
+                LOG.warning(
+                    f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
             response_detail = response_detail[5:]
 
     async def _get_alarm_status(self):
@@ -400,7 +405,7 @@ class Panel:
             if count:
                 await self._get_alarms_for_priority(priority)
             else:
-                # If events have been cleared, then we can just clear all areas instead of asking the panel for more info
+                # Nothing triggered, clear alarms
                 for area in self.areas.values():
                     area._set_alarm(priority, False)
 
@@ -412,13 +417,11 @@ class Panel:
             entities[_get_int16(response)].status = response[2]
             response = response[3:]
 
-    async def _area_arm(self, area_id, arm_type, code):
-        if self._arming_code != None and code != self._arming_code:
-            return
+    async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
         request.extend(bytearray((area_id-1)//8)) # leading 0 bytes
-        request.append(1<<(7-((area_id-1) % 8))) # i%8-th bit from the left (top) set
+        request.append(1 << (7-((area_id-1) % 8))) # i%8-th bit from the left (top) set
         await self._connection.send_command(CMD.AREA_ARM, request)
 
     async def _subscribe(self):
@@ -427,7 +430,7 @@ class Panel:
         data = bytearray(b'\x01') # format
         data += SUBSCRIBE # confidence / heartbeat
         data += SUBSCRIBE # event mem
-        data += IGNORE    # event log
+        data += IGNORE # event log
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
@@ -457,7 +460,7 @@ class Panel:
         self.points[point_id].status = data[2]
         LOG.debug("Point updated: %s", self.points[point_id])
         return 3
-    
+
     def _event_summary_consumer(self, data) -> int:
         priority = data[0]
         count = _get_int16(data, 1)
@@ -465,7 +468,7 @@ class Panel:
             loop = asyncio.get_running_loop()
             loop.create_task(self._get_alarms_for_priority(priority))
         else:
-            # If events have been cleared, then we can just clear all areas instead of asking the panel for more info
+            # Alarms are no longer triggered, clear
             for area in self.areas.values():
                 area._set_alarm(priority, False)
         return 3
