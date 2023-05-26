@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from .const import *
 from .connection import Connection
+from .history import history_parser
 
 LOG = logging.getLogger(__name__)
 
@@ -15,8 +16,12 @@ ssl_context.set_ciphers('DEFAULT')
 
 def _get_int8(data, offset = 0):
     return int.from_bytes(data[offset:offset+1], 'big')
+
 def _get_int16(data, offset = 0):
     return int.from_bytes(data[offset:offset+2], 'big')
+
+def _get_int32(data, offset = 0):
+    return int.from_bytes(data[offset:offset+4], 'big')
 
 class Observable:
     def __init__(self):
@@ -48,9 +53,13 @@ class Area(PanelEntity):
         PanelEntity.__init__(self, name, status)
         self.ready_observer = Observable()
         self.alarm_observer = Observable()
+        self.history_observer = Observable()
         self._set_ready(AREA_READY_NOT, 0)
         self._alarms = set()
+        self._history = []
 
+    @property
+    def history(self): return self._history
     @property
     def all_ready(self): return self._ready == AREA_READY_ALL
     @property
@@ -59,6 +68,10 @@ class Area(PanelEntity):
     def faults(self): return self._faults
     @property
     def alarms(self): return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
+
+    def _add_history(self, line):
+        self._history.append(line)
+        self.history_observer._notify()
 
     def _set_ready(self, ready, faults):
         self._ready = ready
@@ -124,6 +137,10 @@ class Panel:
         self._connection = None
         self._last_msg = None
         self._poll_task = None
+        self._history_parser = None
+        self._history_len = 0
+        self._last_history_msg = 0
+        self._history = []
 
         self.model = None
         self.protocol_version = None
@@ -139,9 +156,11 @@ class Panel:
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
+    LOAD_HISTORY = 1 << 3
     LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
+    LOAD_ALL_HISTORY = LOAD_ALL | LOAD_HISTORY
 
-    async def connect(self, load_selector = LOAD_ALL):
+    async def connect(self, load_selector = LOAD_ALL_HISTORY):
         loop = asyncio.get_running_loop()
         self._monitor_connection_task = loop.create_task(self._monitor_connection())
         await self._connect(load_selector)
@@ -152,6 +171,8 @@ class Panel:
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
+        if load_selector & self.LOAD_HISTORY:
+            await self._load_history()
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
@@ -180,16 +201,16 @@ class Panel:
                 pass
             finally:
                 self._poll_task = None
-        if self._connection: self._connection.close()
+        if self._connection:  self._connection.close()
 
-    async def area_disarm(self, area_id):
-        await self._area_arm(area_id, AREA_ARMING_DISARM)
+    async def area_disarm(self, area_id, code):
+        await self._area_arm(area_id, AREA_ARMING_DISARM, code)
 
-    async def area_arm_part(self, area_id):
-        await self._area_arm(area_id, self._partial_arming_id)
+    async def area_arm_part(self, area_id, code):
+        await self._area_arm(area_id, self._partial_arming_id, code)
 
-    async def area_arm_all(self, area_id):
-        await self._area_arm(area_id, self._all_arming_id)
+    async def area_arm_all(self, area_id, code):
+        await self._area_arm(area_id, self._all_arming_id, code)
 
     def connection_status(self) -> bool:
         return self._connection != None and self.points and self.areas
@@ -229,6 +250,25 @@ class Panel:
             p.reset()
         self.connection_status_observer._notify()
 
+    async def _load_history(self):
+        while True:
+            request = bytearray([0xFF])
+            request.extend(self._last_history_msg.to_bytes(4, 'big'))
+            data = await self._connection.send_command(CMD.REQUEST_RAW_HISTORY_EVENTS, request)
+            count = data[0]
+            start = _get_int32(data, 1)
+            # When all events are read, a count of zero is returned
+            # Also, the start is set to the next event id to read
+            if count == 0:
+                self._last_history_msg = start
+                break
+            data = data[5:]
+            for i in range(count):
+                for area in self.areas.values():
+                    area._add_history(self._history_parser(data))
+                data = data[self._history_len:]
+            self._last_history_msg += count
+
     async def _monitor_connection(self):
         while True:
             try:
@@ -246,6 +286,7 @@ class Panel:
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
                 await self._get_alarm_status()
+                await self._load_history()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -300,6 +341,8 @@ class Panel:
             # If the panel doesn't support CF03, then use CF01
             data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
+        self._history_len = PANEL_HISTORY_LEN[data[0]]
+        self._history_parser = history_parser(data[0])
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
@@ -430,7 +473,7 @@ class Panel:
         data = bytearray(b'\x01') # format
         data += SUBSCRIBE # confidence / heartbeat
         data += SUBSCRIBE # event mem
-        data += IGNORE # event log
+        data += SUBSCRIBE # event log
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
@@ -472,11 +515,20 @@ class Panel:
             for area in self.areas.values():
                 area._set_alarm(priority, False)
         return 3
+    
+
+    def _event_history_consumer(self, data) -> int:
+        text_len = _get_int16(data, 23)
+        for area in self.areas.values():
+            area._add_history(data[25:].decode())
+        self._last_history_msg = _get_int16(data, 4)
+        return 25 + text_len
 
     def _on_status_update(self, data):
         CONSUMERS = {
             0x00: lambda data: 0,  # heartbeat
             0x01: self._event_summary_consumer,
+            0x02: self._event_history_consumer,
             0x04: self._area_on_off_consumer,
             0x05: self._area_ready_consumer,
             0x07: self._point_status_consumer,
