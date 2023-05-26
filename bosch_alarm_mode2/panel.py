@@ -57,9 +57,12 @@ class Area(PanelEntity):
         self._set_ready(AREA_READY_NOT, 0)
         self._alarms = set()
         self._history = []
+        self._last_history_event = 0
 
     @property
     def history(self): return self._history
+    @property
+    def last_history_event(self): return self._last_history_event
     @property
     def all_ready(self): return self._ready == AREA_READY_ALL
     @property
@@ -69,8 +72,9 @@ class Area(PanelEntity):
     @property
     def alarms(self): return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
 
-    def _add_history(self, line):
+    def _add_history(self, line, event_id):
         self._history.append(line)
+        self._last_history_event = event_id
         self.history_observer._notify()
 
     def _set_ready(self, ready, faults):
@@ -156,11 +160,9 @@ class Panel:
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
-    LOAD_HISTORY = 1 << 3
     LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
-    LOAD_ALL_HISTORY = LOAD_ALL | LOAD_HISTORY
 
-    async def connect(self, load_selector = LOAD_ALL_HISTORY):
+    async def connect(self, load_selector = LOAD_ALL):
         loop = asyncio.get_running_loop()
         self._monitor_connection_task = loop.create_task(self._monitor_connection())
         await self._connect(load_selector)
@@ -171,8 +173,6 @@ class Panel:
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
-        if load_selector & self.LOAD_HISTORY:
-            await self._load_history()
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
@@ -183,6 +183,11 @@ class Panel:
                 self._poll_task = loop.create_task(self._poll())
                 LOG.info(
                     "Panel does not support subscriptions, falling back to polling")
+
+    async def load_history(self, last_event_id, previous_events):
+        self._history = previous_events
+        self._last_history_msg = last_event_id
+        await self._load_history()
 
     async def disconnect(self):
         if self._monitor_connection_task:
@@ -265,7 +270,7 @@ class Panel:
             data = data[5:]
             for i in range(count):
                 for area in self.areas.values():
-                    area._add_history(self._history_parser(data))
+                    area._add_history(self._history_parser(data), self._last_history_msg + i)
                 data = data[self._history_len:]
             self._last_history_msg += count
 
@@ -519,9 +524,9 @@ class Panel:
 
     def _event_history_consumer(self, data) -> int:
         text_len = _get_int16(data, 23)
-        for area in self.areas.values():
-            area._add_history(data[25:].decode())
         self._last_history_msg = _get_int16(data, 4)
+        for area in self.areas.values():
+            area._add_history(data[25:].decode(), self._last_history_msg)
         return 25 + text_len
 
     def _on_status_update(self, data):
