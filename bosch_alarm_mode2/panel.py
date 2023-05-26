@@ -172,14 +172,6 @@ class Panel:
                 pass
             finally:
                 self._monitor_connection_task = None
-        if self._poll_task:
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._poll_task = None
         if self._connection: self._connection.close()
 
     async def area_disarm(self, area_id):
@@ -220,7 +212,7 @@ class Panel:
         await self.load(load_selector)
         self.connection_status_observer._notify()
 
-    def _on_disconnect(self):
+    async def _on_disconnect(self):
         self._connection = None
         self._last_msg = None
         for a in self.areas.values():
@@ -228,6 +220,14 @@ class Panel:
         for p in self.points.values():
             p.reset()
         self.connection_status_observer._notify()
+        if self._poll_task:
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._poll_task = None
 
     async def _monitor_connection(self):
         while True:
