@@ -198,19 +198,7 @@ class Panel:
                 pass
             finally:
                 self._monitor_connection_task = None
-<<<<<<< HEAD
-        if self._poll_task:
-            self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._poll_task = None
-        if self._connection:  self._connection.close()
-=======
         if self._connection: self._connection.close()
->>>>>>> master
 
     async def area_disarm(self, area_id, code):
         await self._area_arm(area_id, AREA_ARMING_DISARM, code)
