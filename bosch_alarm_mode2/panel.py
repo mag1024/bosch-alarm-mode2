@@ -198,6 +198,7 @@ class Panel:
                 pass
             finally:
                 self._monitor_connection_task = None
+<<<<<<< HEAD
         if self._poll_task:
             self._poll_task.cancel()
             try:
@@ -207,6 +208,9 @@ class Panel:
             finally:
                 self._poll_task = None
         if self._connection:  self._connection.close()
+=======
+        if self._connection: self._connection.close()
+>>>>>>> master
 
     async def area_disarm(self, area_id, code):
         await self._area_arm(area_id, AREA_ARMING_DISARM, code)
@@ -246,7 +250,7 @@ class Panel:
         await self.load(load_selector)
         self.connection_status_observer._notify()
 
-    def _on_disconnect(self):
+    async def _on_disconnect(self):
         self._connection = None
         self._last_msg = None
         for a in self.areas.values():
@@ -254,6 +258,14 @@ class Panel:
         for p in self.points.values():
             p.reset()
         self.connection_status_observer._notify()
+        if self._poll_task:
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                self._poll_task = None
 
     async def _load_history(self):
         while True:
