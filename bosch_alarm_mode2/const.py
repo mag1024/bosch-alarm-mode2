@@ -67,6 +67,7 @@ AREA_STATUS_ARMING = [0x07, 0x08, 0x0D]
 AREA_STATUS_PENDING = [0x05, 0x06, 0x0E]
 AREA_STATUS_PART_ARMED = [0x02, 0x03]
 AREA_STATUS_ALL_ARMED = [0x01, 0x09, 0x0C]
+AREA_STATUS_ARMED = AREA_STATUS_ALL_ARMED + AREA_STATUS_PART_ARMED
 
 AREA_STATUS = {
     0x00: "Unknown",
@@ -99,6 +100,9 @@ AREA_READY = {
 AREA_ARMING_DISARM = 0x01
 AREA_ARMING_MASTER_DELAY = 0x03
 AREA_ARMING_PERIMETER_DELAY = 0x05
+AREA_ARMING_STAY1 = 0x0A
+AREA_ARMING_STAY2 = 0x0B
+AREA_ARMING_AWAY = 0x0C
 
 POINT_STATUS_OPEN = 0x02
 POINT_STATUS_NORMAL = 0x03
@@ -115,15 +119,36 @@ POINT_STATUS = {
     0xFF: "Unknown",
 }
 
+ALARM_MEMORY_PRIORITY_ALARMS = [0x07, 0x09, 0x0A]
+
+ALARM_MEMORY_PRIORITIES = {
+    0x01: "Burglary Trouble",
+    0x02: "Burglary Supervisory",
+    0x03: "Gas Trouble",
+    0x04: "Gas Supervisory",
+    0x05: "Fire Trouble",
+    0x06: "Fire Supervisory",
+    0x07: "Burglary Alarm",
+    0x08: "Personal Emergency",
+    0x09: "Gas Alarm",
+    0x0A: "Fire Alarm"
+}
+
 class CMD:
     # Unauthenticated commands
     WHAT_ARE_YOU = 0x01
     AUTHENTICATE = 0x06
+    LOGIN_REMOTE_USER = 0x3E
+    # Alarm memory details
+    ALARM_MEMORY_SUMMARY = 0x08
+    ALARM_MEMORY_DETAIL = 0x23
     # Area group
+    REQUEST_CONFIGURED_AREAS = 0x24
     AREA_STATUS = 0x26
     AREA_ARM = 0x27
     AREA_TEXT = 0x29
     # Point group
+    REQUEST_CONFIGURED_POINTS = 0x35
     POINT_STATUS = 0x38
     POINT_TEXT = 0x3C
     # System group

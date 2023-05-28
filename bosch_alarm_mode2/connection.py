@@ -20,6 +20,7 @@ class Connection(asyncio.Protocol):
     def connection_lost(self, exc):
         LOG.info("Connection terminated.")
         self._on_disconnect()
+        
 
     def data_received(self, data):
         LOG.debug("<< %s", data)
