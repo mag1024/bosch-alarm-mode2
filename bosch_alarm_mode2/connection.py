@@ -19,8 +19,7 @@ class Connection(asyncio.Protocol):
 
     def connection_lost(self, exc):
         LOG.info("Connection terminated.")
-        loop = asyncio.get_running_loop()
-        loop.create_task(self._on_disconnect())
+        self._on_disconnect()
         
 
     def data_received(self, data):

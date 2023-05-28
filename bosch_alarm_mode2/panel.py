@@ -238,7 +238,7 @@ class Panel:
         await self.load(load_selector)
         self.connection_status_observer._notify()
 
-    async def _on_disconnect(self):
+    def _on_disconnect(self):
         self._connection = None
         self._last_msg = None
         for a in self.areas.values():
@@ -248,12 +248,7 @@ class Panel:
         self.connection_status_observer._notify()
         if self._poll_task:
             self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                self._poll_task = None
+            self._poll_task = None
 
     async def _load_history(self):
         while True:
@@ -320,22 +315,21 @@ class Panel:
     async def _authenticate(self):
         creds = bytearray(b'\x01')  # automation user
         creds.extend(map(ord, self._passcode))
-        creds.append(0x00)  # null terminate
+        creds.append(0x00) # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
         if result != b'\x01':
-            if result[0] == 0x00:
-                if self._passcode.isnumeric():
-                    LOG.info("Authentication failed, trying remote user")
-                    try:
-                        await self._login_remote_user()
-                        LOG.debug("Authentication success!")
-                        return
-                    except Exception:
-                        pass
-                self._connection.close()
-                error = ["Not Authorized", "Authorized",
-                        "Max Connections"][result[0]]
-                raise PermissionError("Authentication failed: " + error)
+            if self._passcode.isnumeric():
+                LOG.info("Authentication failed, trying remote user")
+                try:
+                    await self._login_remote_user()
+                    LOG.debug("Authentication success!")
+                    return
+                except Exception:
+                    pass
+            self._connection.close()
+            error = ["Not Authorized", "Authorized",
+                    "Max Connections"][result[0]]
+            raise PermissionError("Authentication failed: " + error)
         LOG.debug("Authentication success!")
             
 
@@ -513,8 +507,7 @@ class Panel:
         priority = data[0]
         count = _get_int16(data, 1)
         if count:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._get_alarms_for_priority(priority))
+            asyncio.create_task(self._get_alarms_for_priority(priority))
         else:
             # Alarms are no longer triggered, clear
             for area in self.areas.values():
