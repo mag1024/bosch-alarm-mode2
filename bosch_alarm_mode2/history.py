@@ -117,6 +117,9 @@ class AMAXHistory(SolutionAMAXHistory):
         check = self._check_history_key(id, date, first_param, second_param)
         if check:
             return check
+        check = self._check_history_key(f"{id}_{first_param}", date, first_param, second_param)
+        if check:
+            return check
         check = self._check_history_key(f"{id}_zone", date, first_param, second_param)
         if check:
             return check
