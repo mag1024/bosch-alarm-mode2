@@ -341,7 +341,7 @@ class Panel:
         self._supports_subscriptions = (bitmask[0] & 0x40) != 0
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
-        supports_command_request_serial_read = (bitmask[11] & 0x04) != 0
+        supports_command_request_serial_read = (bitmask[13] & 0x04) != 0
         supports_command_request_history_text = (bitmask[5] & 0x80) != 0
         supports_command_request_history_raw_ext = (bitmask[16] & 0x02) != 0
         if supports_command_request_history_text:
