@@ -310,7 +310,7 @@ class Panel:
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
         # Check if serial read command is supported before sending it
-        if (bitmask[11] & 0x04) != 0:
+        if (bitmask[13] & 0x04) != 0:
             data = await self._connection.send_command(
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
