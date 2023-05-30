@@ -104,20 +104,21 @@ AREA_ARMING_STAY1 = 0x0A
 AREA_ARMING_STAY2 = 0x0B
 AREA_ARMING_AWAY = 0x0C
 
-POINT_STATUS_OPEN = 0x02
-POINT_STATUS_NORMAL = 0x03
-POINT_STATUS_UNKNOWN = 0xFF
+class POINT_STATUS:
+    OPEN = [0x01, 0x02]
+    NORMAL = 0x03
+    UNKNOWN = 0xFF
 
-POINT_STATUS = {
-    0x00: "Unassigned",
-    0x01: "Short",
-    0x02: "Open",
-    0x03: "Normal",
-    0x04: "Missing",
-    0x05: "Resistor 2",
-    0x06: "Resistor 3",
-    0xFF: "Unknown",
-}
+    TEXT = {
+        0x00: "Unassigned",
+        0x01: "Short",
+        0x02: "Open",
+        0x03: "Normal",
+        0x04: "Missing",
+        0x05: "Resistor 2",
+        0x06: "Resistor 3",
+        0xFF: "Unknown",
+    }
 
 ALARM_MEMORY_PRIORITY_ALARMS = [0x07, 0x09, 0x0A]
 

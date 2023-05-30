@@ -83,7 +83,8 @@ class Area(PanelEntity):
     def is_all_armed(self):
         return self.status in AREA_STATUS_ALL_ARMED
     def is_triggered(self):
-        return self.status in AREA_STATUS_ARMED and self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
+        return (self.status in AREA_STATUS_ARMED and
+            self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS))
 
     def reset(self):
         self.status = AREA_STATUS_UNKNOWN
@@ -96,20 +97,20 @@ class Area(PanelEntity):
             AREA_READY[self._ready], self._faults)
 
 class Point(PanelEntity):
-    def __init__(self, name = None, status = POINT_STATUS_UNKNOWN):
+    def __init__(self, name = None, status = POINT_STATUS.UNKNOWN):
         PanelEntity.__init__(self, name, status)
 
     def is_open(self) -> bool:
-        return self.status == POINT_STATUS_OPEN
+        return self.status in POINT_STATUS.OPEN
 
     def is_normal(self) -> bool:
-        return self.status == POINT_STATUS_NORMAL
+        return self.status == POINT_STATUS.NORMAL
 
     def reset(self):
-        self.status = POINT_STATUS_UNKNOWN
+        self.status = POINT_STATUS.UNKNOWN
 
     def __repr__(self):
-        return f"{self.name}: {POINT_STATUS[self.status]}"
+        return f"{self.name}: {POINT_STATUS.TEXT[self.status]}"
 
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
