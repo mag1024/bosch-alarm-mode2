@@ -1,7 +1,7 @@
 import datetime
 import abc
-from .const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT
-from .utils import get_int16, get_int32, get_int8, get_int16_little, get_int32_little
+from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT
+from .utils import BE_INT, LE_INT
 
 class History(object):
     __metaclass__ = abc.ABCMeta
@@ -45,8 +45,8 @@ class History(object):
             events = events[event_length:]
     
     def parse_subscription_event(self, event):
-        text_len = get_int16(event, 23)
-        timestamp = get_int32_little(event, 14)
+        text_len = BE_INT.get_int16(event, 23)
+        timestamp = LE_INT.get_int32(event, 14)
         year = 2010 + (timestamp >> 26)
         month = (timestamp >> 22) & 0x0F
         day = (timestamp >> 17) & 0x1F
@@ -56,7 +56,7 @@ class History(object):
         date = datetime.datetime(year, month, day, hour, minute, second)
         event = event[25:].decode()
         event = f"{date} | {event}"
-        self._add_event(event, get_int16(event, 4))
+        self._add_event(event, BE_INT.get_int16(event, 4))
         return 25 + text_len
 
 class SolutionAMAXHistory(History):
@@ -64,15 +64,15 @@ class SolutionAMAXHistory(History):
         super().__init__()
         
     def _parse_params(self, event):
-        timestamp = get_int16_little(event)
+        timestamp = LE_INT.get_int16(event)
         minute = timestamp & 0x3F
         hour = (timestamp >> 6) & 0x1F
         day = (timestamp >> 11) & 0x1F
-        timestamp = get_int16_little(event, 2)
+        timestamp = LE_INT.get_int16(event, 2)
         second = timestamp & 0x3F
         month = (timestamp >> 6) & 0x0F
         year = 2000 + (timestamp >> 10)
-        first_param = get_int16_little(event, 4)
+        first_param = LE_INT.get_int16(event, 4)
         second_param = event[7]
         event_code = event[6]
         date = datetime.datetime(year, month, day, hour, minute, second)
@@ -140,7 +140,7 @@ class BGHistory(History):
         super().__init__()
 
     def _parse_event(self, event):
-        timestamp = get_int32_little(event, 10)
+        timestamp = LE_INT.get_int32(event, 10)
         year = 2010 + (timestamp >> 26)
         month = (timestamp >> 22) & 0x0F
         day = (timestamp >> 17) & 0x1F
@@ -149,11 +149,11 @@ class BGHistory(History):
         second = timestamp & 0x3F
 
         date = datetime.datetime(year, month, day, hour, minute, second)
-        event_code = get_int16_little(event)
-        area = get_int16_little(event, 2)
-        param1 = get_int16_little(event, 4)
-        param2 = get_int16_little(event, 6)
-        param3 = get_int16_little(event, 8)
+        event_code = LE_INT.get_int16(event)
+        area = LE_INT.get_int16(event, 2)
+        param1 = LE_INT.get_int16(event, 4)
+        param2 = LE_INT.get_int16(event, 6)
+        param3 = LE_INT.get_int16(event, 8)
         date = f"{date} | "
         event_code = str(event_code)
         event = date + B_G_HISTORY_FORMAT[event_code].format(area=area, param1=param1, param2=param2, param3=param3)

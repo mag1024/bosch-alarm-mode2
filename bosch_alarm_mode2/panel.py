@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from .const import *
 from .connection import Connection
 from .history import construct_raw_parser, TextHistory
-from .utils import get_int16, get_int32, get_int8
+from .utils import BE_INT
 
 LOG = logging.getLogger(__name__)
 
@@ -145,7 +145,6 @@ class Panel:
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
-        self._supports_command_request_history_text = False
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -245,7 +244,7 @@ class Panel:
             request.extend(self._history.last_event_id.to_bytes(4, 'big'))
             data = await self._connection.send_command(self._history_cmd, request) 
             count = data[0]
-            start = get_int32(data, 1)
+            start = BE_INT.get_int32(data, 1)
             # When all events are read, a count of zero is returned
             # Also, the start is set to the next event id to read
             if count:
@@ -377,7 +376,7 @@ class Panel:
             data = await self._connection.send_command(name_cmd, request)
             if not data: break
             while data:
-                id = get_int16(data)
+                id = BE_INT.get_int16(data)
                 name, data = data[2:].split(b'\x00', 1)
                 names[id] = name.decode('ascii')
         return names
@@ -424,9 +423,9 @@ class Panel:
             request.append(last_point.to_bytes(2, 'big'))
         response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
         while response_detail:
-            area = get_int16(response_detail)
+            area = BE_INT.get_int16(response_detail)
             # item_type = response_detail[2]
-            point = get_int16(response_detail, 3)
+            point = BE_INT.get_int16(response_detail, 3)
             if point == 0xFFFF:
                 await self._get_alarms_for_priority(priority, area, point)
             if area in self.areas:
@@ -440,7 +439,7 @@ class Panel:
         data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
-            count = get_int16(data, i)
+            count = BE_INT.get_int16(data, i)
             if count:
                 await self._get_alarms_for_priority(priority)
             else:
@@ -453,7 +452,7 @@ class Panel:
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
         response = await self._connection.send_command(status_cmd, request)
         while response:
-            entities[get_int16(response)].status = response[2]
+            entities[BE_INT.get_int16(response)].status = response[2]
             response = response[3:]
 
     async def _area_arm(self, area_id, arm_type):
@@ -480,29 +479,29 @@ class Panel:
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
     def _area_on_off_consumer(self, data) -> int:
-        area_id = get_int16(data)
+        area_id = BE_INT.get_int16(data)
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS[area_status]))
         return 3
 
     def _area_ready_consumer(self, data) -> int:
-        area_id = get_int16(data)
+        area_id = BE_INT.get_int16(data)
         ready_status = data[2]
-        faults = get_int16(data, 3)
+        faults = BE_INT.get_int16(data, 3)
         self.areas[area_id]._set_ready(ready_status, faults)
         LOG.debug("Area %d: %s (%d faults)" % (
             area_id, AREA_READY[ready_status], faults))
         return 5
 
     def _point_status_consumer(self, data) -> int:
-        point_id = get_int16(data)
+        point_id = BE_INT.get_int16(data)
         self.points[point_id].status = data[2]
         LOG.debug("Point updated: %s", self.points[point_id])
         return 3
 
     def _event_summary_consumer(self, data) -> int:
         priority = data[0]
-        count = get_int16(data, 1)
+        count = BE_INT.get_int16(data, 1)
         if count:
             asyncio.create_task(self._get_alarms_for_priority(priority))
         else:

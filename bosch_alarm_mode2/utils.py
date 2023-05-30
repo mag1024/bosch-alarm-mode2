@@ -1,14 +1,26 @@
-def get_int8(data, offset = 0):
-    return int.from_bytes(data[offset:offset+1], 'big')
+class BE_INT:
+    @classmethod
+    def get_int8(data, offset=0):
+        return int.from_bytes(data[offset:offset+1], 'big')
 
-def get_int16(data, offset = 0):
-    return int.from_bytes(data[offset:offset+2], 'big')
+    @classmethod
+    def get_int16(data, offset=0):
+        return int.from_bytes(data[offset:offset+2], 'big')
 
-def get_int32(data, offset = 0):
-    return int.from_bytes(data[offset:offset+4], 'big')
+    @classmethod
+    def get_int32(data, offset=0):
+        return int.from_bytes(data[offset:offset+4], 'big')
 
-def get_int16_little(data, offset=0):
-    return int.from_bytes(data[offset:offset+2], 'little')
 
-def get_int32_little(data, offset=0):
-    return int.from_bytes(data[offset:offset+4], 'little')
+class LE_INT:
+    @classmethod
+    def get_int8(data, offset=0):
+        return int.from_bytes(data[offset:offset+1], 'little')
+
+    @classmethod
+    def get_int16(data, offset=0):
+        return int.from_bytes(data[offset:offset+2], 'little')
+
+    @classmethod
+    def get_int32(data, offset=0):
+        return int.from_bytes(data[offset:offset+4], 'little')
