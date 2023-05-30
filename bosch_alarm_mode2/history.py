@@ -11,7 +11,7 @@ class History(object):
         self._ready = False
         self.history_observer = Observable()
     
-    def _load_history(self, last_event_id, events):
+    def _init_history(self, last_event_id, events):
         self._last_event_id = last_event_id
         self._events = events
         self._ready = True
@@ -39,12 +39,14 @@ class History(object):
         return
     
     def parse_events(self, start, events, count):
+        print(self._last_event_id)
+        print(count)
         self._last_event_id = start
         if not count:
             return
         event_length = len(events) // count
         for i in range(count):
-            self._add_event(self._parse_event(events), start + i)
+            self._add_event(self._parse_event(events), start + i + 1)
             events = events[event_length:]
     
     def parse_subscription_event(self, event):

@@ -152,8 +152,8 @@ class Panel:
                 LOG.info(
                     "Panel does not support subscriptions, falling back to polling")
 
-    async def load_history(self, last_event_id, previous_events):
-        await self._history._load_history(last_event_id, previous_events)
+    async def init_history(self, last_event_id, previous_events):
+        self._history._init_history(last_event_id, previous_events)
         await self._load_history()
 
     @property
@@ -243,8 +243,6 @@ class Panel:
             self._history.parse_events(start, data, count)
             if count == 0:
                 break
-            for area in self.areas.values():
-                area._update_history(self._history)
 
     async def _monitor_connection(self):
         while True:
@@ -503,10 +501,7 @@ class Panel:
     
 
     def _event_history_consumer(self, data) -> int:
-        length = self._history._parse_subscription_event(data)
-        for area in self.areas.values():
-            area._update_history(self._history)
-        return length
+        return self._history._parse_subscription_event(data)
 
     def _on_status_update(self, data):
         CONSUMERS = {
