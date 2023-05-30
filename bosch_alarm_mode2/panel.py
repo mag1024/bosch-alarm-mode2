@@ -44,7 +44,7 @@ class PanelEntity:
         self.status_observer._notify()
 
 class Area(PanelEntity):
-    def __init__(self, name = None, status = AREA_STATUS_UNKNOWN):
+    def __init__(self, name = None, status = AREA_STATUS.UNKNOWN):
         PanelEntity.__init__(self, name, status)
         self.ready_observer = Observable()
         self.alarm_observer = Observable()
@@ -73,27 +73,27 @@ class Area(PanelEntity):
         self.alarm_observer._notify()
 
     def is_disarmed(self):
-        return self.status == AREA_STATUS_DISARMED
+        return self.status == AREA_STATUS.DISARMED
     def is_arming(self):
-        return self.status in AREA_STATUS_ARMING
+        return self.status in AREA_STATUS.ARMING
     def is_pending(self):
-        return self.status in AREA_STATUS_PENDING
+        return self.status in AREA_STATUS.PENDING
     def is_part_armed(self):
-        return self.status in AREA_STATUS_PART_ARMED
+        return self.status in AREA_STATUS.PART_ARMED
     def is_all_armed(self):
-        return self.status in AREA_STATUS_ALL_ARMED
+        return self.status in AREA_STATUS.ALL_ARMED
     def is_triggered(self):
-        return (self.status in AREA_STATUS_ARMED and
+        return (self.status in AREA_STATUS.ARMED and
             self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS))
 
     def reset(self):
-        self.status = AREA_STATUS_UNKNOWN
+        self.status = AREA_STATUS.UNKNOWN
         self._set_ready(AREA_READY_NOT, 0)
         self._alarms = set()
 
     def __repr__(self):
         return "%s: %s [%s] (%d)" % (
-            self.name, AREA_STATUS[self.status],
+            self.name, AREA_STATUS.TEXT[self.status],
             AREA_READY[self._ready], self._faults)
 
 class Point(PanelEntity):
@@ -438,7 +438,7 @@ class Panel:
     def _area_on_off_consumer(self, data) -> int:
         area_id = _get_int16(data)
         area_status = self.areas[area_id].status = data[2]
-        LOG.debug("Area %d: %s" % (area_id, AREA_STATUS[area_status]))
+        LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
         return 3
 
     def _area_ready_consumer(self, data) -> int:

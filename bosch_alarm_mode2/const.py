@@ -61,31 +61,32 @@ PANEL_MODEL = {
     0xA9: "B6512 (US1B)",
 }
 
-AREA_STATUS_UNKNOWN = 0x00
-AREA_STATUS_DISARMED = 0x04
-AREA_STATUS_ARMING = [0x07, 0x08, 0x0D]
-AREA_STATUS_PENDING = [0x05, 0x06, 0x0E]
-AREA_STATUS_PART_ARMED = [0x02, 0x03]
-AREA_STATUS_ALL_ARMED = [0x01, 0x09, 0x0C]
-AREA_STATUS_ARMED = AREA_STATUS_ALL_ARMED + AREA_STATUS_PART_ARMED
+class AREA_STATUS:
+    UNKNOWN = 0x00
+    DISARMED = 0x04
+    ARMING = [0x07, 0x08, 0x0D]
+    PENDING = [0x05, 0x06, 0x0E]
+    PART_ARMED = [0x02, 0x03]
+    ALL_ARMED = [0x01, 0x09, 0x0C]
+    ARMED = ALL_ARMED + PART_ARMED
 
-AREA_STATUS = {
-    0x00: "Unknown",
-    0x01: "All On / Away Armed",
-    0x02: "Part On Instant",
-    0x03: "Part On Delay / Stay Armed",
-    0x04: "Disarmed",
-    0x05: "All On Entry Delay / Away Armed Entry Delay",
-    0x06: "Part On Entry Delay / Stay Armed Entry Delay",
-    0x07: "All On Exit Delay / Away Armed Exit Delay",
-    0x08: "Part On Exit Delay / Stay Armed Exit Delay",
-    0x09: "All On Instant Armed",
-    0x0A: "Stay 1 On",
-    0x0B: "Stay 2 On",
-    0x0C: "Away On",
-    0x0D: "Away Exit Delay",
-    0x0E: "Away Entry Delay",
-}
+    TEXT = {
+        0x00: "Unknown",
+        0x01: "All On / Away Armed",
+        0x02: "Part On Instant",
+        0x03: "Part On Delay / Stay Armed",
+        0x04: "Disarmed",
+        0x05: "All On Entry Delay / Away Armed Entry Delay",
+        0x06: "Part On Entry Delay / Stay Armed Entry Delay",
+        0x07: "All On Exit Delay / Away Armed Exit Delay",
+        0x08: "Part On Exit Delay / Stay Armed Exit Delay",
+        0x09: "All On Instant Armed",
+        0x0A: "Stay 1 On",
+        0x0B: "Stay 2 On",
+        0x0C: "Away On",
+        0x0D: "Away Exit Delay",
+        0x0E: "Away Entry Delay",
+    }
 
 AREA_READY_NOT = 0x00
 AREA_READY_PART = 0x01
