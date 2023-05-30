@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from .const import *
 from .connection import Connection
 from .history import construct_raw_parser, TextHistory
-from .utils import BE_INT
+from .utils import BE_INT, Observable
 
 LOG = logging.getLogger(__name__)
 
@@ -14,16 +14,6 @@ ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
-
-class Observable:
-    def __init__(self):
-        self._observers = []
-
-    def attach(self, observer): self._observers.append(observer)
-    def detach(self, observer): self._observers.remove(observer)
-
-    def _notify(self):
-        for observer in self._observers: observer()
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -44,16 +34,9 @@ class Area(PanelEntity):
         PanelEntity.__init__(self, name, status)
         self.ready_observer = Observable()
         self.alarm_observer = Observable()
-        self.history_observer = Observable()
         self._set_ready(AREA_READY_NOT, 0)
         self._alarms = set()
-        self._history = []
-        self._last_history_event = 0
 
-    @property
-    def history(self): return self._history
-    @property
-    def last_history_event(self): return self._last_history_event
     @property
     def all_ready(self): return self._ready == AREA_READY_ALL
     @property
@@ -62,11 +45,6 @@ class Area(PanelEntity):
     def faults(self): return self._faults
     @property
     def alarms(self): return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
-
-    def _update_history(self, history):
-        self._history = history.events
-        self._last_history_event = history.last_event_id
-        self.history_observer._notify()
 
     def _set_ready(self, ready, faults):
         self._ready = ready
@@ -177,6 +155,18 @@ class Panel:
     async def load_history(self, last_event_id, previous_events):
         await self._history._load_history(last_event_id, previous_events)
         await self._load_history()
+
+    @property
+    def history(self):
+        return self._history.events
+
+    @property
+    def last_history_id(self):
+        return self._history.last_event_id
+
+    @property
+    def history_observer(self):
+        return self._history.history_observer
 
     async def disconnect(self):
         if self._monitor_connection_task:

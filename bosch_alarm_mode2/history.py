@@ -1,7 +1,7 @@
 import datetime
 import abc
 from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT
-from .utils import BE_INT, LE_INT
+from .utils import BE_INT, LE_INT, Observable
 
 class History(object):
     __metaclass__ = abc.ABCMeta
@@ -9,11 +9,13 @@ class History(object):
         self._last_event_id = 0
         self._events = []
         self._ready = False
+        self.history_observer = Observable()
     
     def _load_history(self, last_event_id, events):
         self._last_event_id = last_event_id
         self._events = events
         self._ready = True
+        self.history_observer._notify()
 
     @property
     def ready(self):
@@ -30,6 +32,7 @@ class History(object):
     def _add_event(self, event, last_event_id):
         self._events.append(event)
         self._last_event_id = last_event_id
+        self.history_observer._notify()
     
     @abc.abstractmethod
     def _parse_event(self, event):

@@ -24,3 +24,13 @@ class LE_INT:
     @classmethod
     def get_int32(cls, data, offset=0):
         return int.from_bytes(data[offset:offset+4], 'little')
+
+class Observable:
+    def __init__(self):
+        self._observers = []
+
+    def attach(self, observer): self._observers.append(observer)
+    def detach(self, observer): self._observers.remove(observer)
+
+    def _notify(self):
+        for observer in self._observers: observer()
