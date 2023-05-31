@@ -102,7 +102,8 @@ class SolutionHistory(SolutionAmaxHistory):
             user = SolutionHistory.SOLUTION_USERS[second_param]
         elif second_param <= 32:
             user = f"User {second_param}"
-        return date + SOLUTION_HISTORY_FORMAT[event_code].format(user=user, param1=first_param, param2=second_param)
+        return date + SOLUTION_HISTORY_FORMAT[event_code].format(
+            user=user, param1=first_param, param2=second_param)
 
 class AmaxHistory(SolutionAmaxHistory):
     def __init__(self) -> None:
@@ -161,7 +162,8 @@ class BGHistory(History):
         param3 = LE_INT.int16(event, 8)
         date = f"{date} | "
         event_code = str(event_code)
-        event = date + B_G_HISTORY_FORMAT[event_code].format(area=area, param1=param1, param2=param2, param3=param3)
+        event = date + B_G_HISTORY_FORMAT[event_code].format(
+            area=area, param1=param1, param2=param2, param3=param3)
         return event
 
 class TextHistory(History):
