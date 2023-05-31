@@ -1,29 +1,16 @@
-class BE_INT:
-    @classmethod
-    def get_int8(cls, data, offset=0):
-        return int.from_bytes(data[offset:offset+1], 'big')
+class EndianInt:
+    def __init__(self, endianness) -> None:
+        self.byteorder = endianness
 
-    @classmethod
-    def get_int16(cls, data, offset=0):
-        return int.from_bytes(data[offset:offset+2], 'big')
+    def int8(self, data, offset=0):
+        return int.from_bytes(data[offset:offset+1], self.byteorder)
+    def int16(self, data, offset=0):
+        return int.from_bytes(data[offset:offset+2], self.byteorder)
+    def int32(self, data, offset=0):
+        return int.from_bytes(data[offset:offset+4], self.byteorder)
 
-    @classmethod
-    def get_int32(cls, data, offset=0):
-        return int.from_bytes(data[offset:offset+4], 'big')
-
-
-class LE_INT:
-    @classmethod
-    def get_int8(cls, data, offset=0):
-        return int.from_bytes(data[offset:offset+1], 'little')
-
-    @classmethod
-    def get_int16(cls, data, offset=0):
-        return int.from_bytes(data[offset:offset+2], 'little')
-
-    @classmethod
-    def get_int32(cls, data, offset=0):
-        return int.from_bytes(data[offset:offset+4], 'little')
+BE_INT = EndianInt('big')
+LE_INT = EndianInt('little')
 
 class Observable:
     def __init__(self):

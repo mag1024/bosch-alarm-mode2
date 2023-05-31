@@ -39,8 +39,6 @@ class History(object):
         return
     
     def parse_events(self, start, events, count):
-        print(self._last_event_id)
-        print(count)
         self._last_event_id = start
         if not count:
             return
@@ -50,8 +48,8 @@ class History(object):
             events = events[event_length:]
     
     def parse_subscription_event(self, event):
-        text_len = BE_INT.get_int16(event, 23)
-        timestamp = LE_INT.get_int32(event, 14)
+        text_len = BE_INT.int16(event, 23)
+        timestamp = LE_INT.int32(event, 14)
         year = 2010 + (timestamp >> 26)
         month = (timestamp >> 22) & 0x0F
         day = (timestamp >> 17) & 0x1F
@@ -61,29 +59,29 @@ class History(object):
         date = datetime.datetime(year, month, day, hour, minute, second)
         event = event[25:].decode()
         event = f"{date} | {event}"
-        self._add_event(event, BE_INT.get_int16(event, 4))
+        self._add_event(event, BE_INT.int16(event, 4))
         return 25 + text_len
 
-class SolutionAMAXHistory(History):
+class SolutionAmaxHistory(History):
     def __init__(self) -> None:
         super().__init__()
         
     def _parse_params(self, event):
-        timestamp = LE_INT.get_int16(event)
+        timestamp = LE_INT.int16(event)
         minute = timestamp & 0x3F
         hour = (timestamp >> 6) & 0x1F
         day = (timestamp >> 11) & 0x1F
-        timestamp = LE_INT.get_int16(event, 2)
+        timestamp = LE_INT.int16(event, 2)
         second = timestamp & 0x3F
         month = (timestamp >> 6) & 0x0F
         year = 2000 + (timestamp >> 10)
-        first_param = LE_INT.get_int16(event, 4)
+        first_param = LE_INT.int16(event, 4)
         second_param = event[7]
         event_code = event[6]
         date = datetime.datetime(year, month, day, hour, minute, second)
         return (event_code, date, first_param, second_param)
 
-class SolutionHistory(SolutionAMAXHistory):
+class SolutionHistory(SolutionAmaxHistory):
     SOLUTION_USERS = {
         0: "Quick",
         994: "PowerUp",
@@ -105,7 +103,8 @@ class SolutionHistory(SolutionAMAXHistory):
         elif second_param <= 32:
             user = f"User {second_param}"
         return date + SOLUTION_HISTORY_FORMAT[event_code].format(user=user, param1=first_param, param2=second_param)
-class AMAXHistory(SolutionAMAXHistory):
+
+class AmaxHistory(SolutionAmaxHistory):
     def __init__(self) -> None:
         super().__init__()
     
@@ -140,12 +139,13 @@ class AMAXHistory(SolutionAMAXHistory):
         check = self._check_history_key(f"{id}_b4", date, first_param, second_param)
         if check and first_param in (150, 151):
             return check
+
 class BGHistory(History):
     def __init__(self) -> None:
         super().__init__()
 
     def _parse_event(self, event):
-        timestamp = LE_INT.get_int32(event, 10)
+        timestamp = LE_INT.int32(event, 10)
         year = 2010 + (timestamp >> 26)
         month = (timestamp >> 22) & 0x0F
         day = (timestamp >> 17) & 0x1F
@@ -154,35 +154,44 @@ class BGHistory(History):
         second = timestamp & 0x3F
 
         date = datetime.datetime(year, month, day, hour, minute, second)
-        event_code = LE_INT.get_int16(event)
-        area = LE_INT.get_int16(event, 2)
-        param1 = LE_INT.get_int16(event, 4)
-        param2 = LE_INT.get_int16(event, 6)
-        param3 = LE_INT.get_int16(event, 8)
+        event_code = LE_INT.int16(event)
+        area = LE_INT.int16(event, 2)
+        param1 = LE_INT.int16(event, 4)
+        param2 = LE_INT.int16(event, 6)
+        param3 = LE_INT.int16(event, 8)
         date = f"{date} | "
         event_code = str(event_code)
         event = date + B_G_HISTORY_FORMAT[event_code].format(area=area, param1=param1, param2=param2, param3=param3)
-        self._add_event(event)
+        return event
 
 class TextHistory(History):
     def __init__(self) -> None:
         super().__init__()
-    def _parse_events(self, events):
-        while events:
-            date = events[:11]
-            events = events[11:]
-            time = events[:8]
-            events = events[8:]
-            event = events[:events.index(0)]
-            events = events[len(event):]
-            event = f"{date} {time} | {event}"
-            self._add_event(event)
+    
+    def _consume_text(self, event_data, length=-1):
+        # if the length is -1, then the string is null terminated
+        if length == -1:
+            length = event_data.index(0)
+        text = event_data[:length]
+        event_data = event_data[length:]
+        return text
+    
+    def parse_events(self, start, events, count):
+        self._last_event_id = start
+        if not count:
+            return
+        for i in range(count):
+            date = self._consume_text(events, 11)
+            time = self._consume_text(events, 8)
+            text = self._consume_text(events)
+            date = datetime.datetime.strptime(f"{date} {time}","%d/%m/%Y %I:%M%p")
+            self._add_event(f"{date} | {text}", start + i + 1)
 
 def construct_raw_parser(panel) -> History:
     if panel <= 0x21:
         return SolutionHistory()
 
     if panel <= 0x24:
-        return AMAXHistory()
+        return AmaxHistory()
 
     return BGHistory()
