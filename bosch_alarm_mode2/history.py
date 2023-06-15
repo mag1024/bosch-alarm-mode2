@@ -6,13 +6,11 @@ from .utils import BE_INT, LE_INT, Observable
 class History(object):
     __metaclass__ = abc.ABCMeta
     def __init__(self) -> None:
-        self._last_event_id = 0
         self._events = []
         self._ready = False
         self.history_observer = Observable()
     
-    def _init_history(self, last_event_id, events):
-        self._last_event_id = last_event_id
+    def _init_history(self, events):
         self._events = events
         self._ready = True
         self.history_observer._notify()
@@ -27,11 +25,12 @@ class History(object):
 
     @property
     def last_event_id(self):
-        return self._last_event_id
+        if not self._events:
+            return 0
+        return self._events[0][0]
     
     def _add_event(self, event, last_event_id):
-        self._events.append(event)
-        self._last_event_id = last_event_id
+        self._events.append((last_event_id, event))
         self.history_observer._notify()
     
     @abc.abstractmethod
@@ -39,7 +38,6 @@ class History(object):
         return
     
     def parse_events(self, start, events, count):
-        self._last_event_id = start
         if not count:
             return
         event_length = len(events) // count
@@ -179,7 +177,6 @@ class TextHistory(History):
         return event_data, text.decode()
     
     def parse_events(self, start, events, count):
-        self._last_event_id = start
         if not count:
             return
         for i in range(count):
