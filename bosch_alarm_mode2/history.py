@@ -27,6 +27,9 @@ class History(object):
     def _parse_event(self, event):
         return
     
+    def _init_history(self, events):
+        self._events = events
+    
     def parse_events(self, start, events, count):
         if not count:
             return
