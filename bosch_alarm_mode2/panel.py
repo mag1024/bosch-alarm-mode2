@@ -101,7 +101,7 @@ class Point(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, passcode):
+    def __init__(self, host, port, passcode, previous_history_events = []):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
@@ -125,6 +125,7 @@ class Panel:
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
+        self._previous_history_events = previous_history_events
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -132,19 +133,19 @@ class Panel:
     LOAD_HISTORY = 1 << 3
     LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS | LOAD_HISTORY
 
-    async def connect(self, load_selector = LOAD_ALL, previous_history_events = []):
+    async def connect(self, load_selector = LOAD_ALL):
         loop = asyncio.get_running_loop()
         self._monitor_connection_task = loop.create_task(self._monitor_connection())
-        await self._connect(load_selector, previous_history_events)
+        await self._connect(load_selector)
 
-    async def load(self, load_selector, previous_history_events):
+    async def load(self, load_selector):
         if load_selector & self.LOAD_BASIC_INFO:
             await self._basicinfo()
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
         if load_selector & self.LOAD_HISTORY:
-            self._history._init_history(previous_history_events)
+            self._history._init_history(self._previous_history_events)
             if self._supports_subscriptions:
                 await self._load_history()
         if load_selector & self.LOAD_STATUS:
@@ -196,7 +197,7 @@ class Panel:
             print('Points:')
             print(self.points)
 
-    async def _connect(self, load_selector, previous_history_events):
+    async def _connect(self, load_selector):
         LOG.info('Connecting to %s:%d...', self._host, self._port)
         def connection_factory(): return Connection(
                 self._passcode, self._on_status_update, self._on_disconnect)
@@ -208,7 +209,7 @@ class Panel:
         self._last_msg = datetime.now()
         self._connection = connection
         await self._authenticate()
-        await self.load(load_selector, previous_history_events)
+        await self.load(load_selector)
         self.connection_status_observer._notify()
 
     def _on_disconnect(self):
