@@ -116,7 +116,7 @@ class Panel:
         self.model = None
         self.protocol_version = None
         self.serial_number = None
-        self._history = TextHistory()
+        self._history = TextHistory(self)
         self._history_cmd = CMD.REQUEST_TEXT_HISTORY_EVENTS
         self.areas = {}
         self.points = {}
@@ -161,10 +161,6 @@ class Panel:
     @property
     def history(self):
         return self._history.events
-
-    @property
-    def history_observer(self):
-        return self._history.history_observer
 
     async def disconnect(self):
         if self._monitor_connection_task:
@@ -331,7 +327,7 @@ class Panel:
         supports_command_request_history_text = (bitmask[5] & 0x80) != 0
         supports_command_request_history_raw_ext = (bitmask[16] & 0x02) != 0
         if not supports_command_request_history_text:
-            self._history = construct_raw_parser(data[0])
+            self._history = construct_raw_parser(data[0], self)
             if supports_command_request_history_raw_ext:
                 self._history_cmd = CMD.REQUEST_RAW_HISTORY_EVENTS_EXT
             else:

@@ -176,11 +176,11 @@ class TextHistory(History):
             date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
             self._add_event(f"{date} | {text}", start + i + 1)
 
-def construct_raw_parser(panel) -> History:
-    if panel <= 0x21:
-        return SolutionHistory()
+def construct_raw_parser(panel_type, panel) -> History:
+    if panel_type <= 0x21:
+        return SolutionHistory(panel)
 
-    if panel <= 0x24:
-        return AmaxHistory()
+    if panel_type <= 0x24:
+        return AmaxHistory(panel)
 
-    return BGHistory()
+    return BGHistory(panel)
