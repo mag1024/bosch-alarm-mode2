@@ -196,7 +196,7 @@ class Panel:
             print('Points:')
             print(self.points)
 
-    async def _connect(self, load_selector):
+    async def _connect(self, load_selector, previous_history_events):
         LOG.info('Connecting to %s:%d...', self._host, self._port)
         def connection_factory(): return Connection(
                 self._passcode, self._on_status_update, self._on_disconnect)
@@ -208,7 +208,7 @@ class Panel:
         self._last_msg = datetime.now()
         self._connection = connection
         await self._authenticate()
-        await self.load(load_selector)
+        await self.load(load_selector, previous_history_events)
         self.connection_status_observer._notify()
 
     def _on_disconnect(self):
