@@ -51,8 +51,8 @@ class History(object):
         return 25 + text_len
 
 class SolutionAmaxHistory(History):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
         
     def _parse_params(self, event):
         timestamp = LE_INT.int16(event)
@@ -78,8 +78,8 @@ class SolutionHistory(SolutionAmaxHistory):
         998: "A-Link",
         999: "Installer",
     }
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
     
     def _parse_event(self, event):
         (event_code, date, first_param, second_param) = self._parse_params(event)
@@ -94,8 +94,8 @@ class SolutionHistory(SolutionAmaxHistory):
             user=user, param1=first_param, param2=second_param)
 
 class AmaxHistory(SolutionAmaxHistory):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
     
     def _check_history_key(self, id, date, first_param, second_param):
         if id in AMAX_HISTORY_FORMAT:
@@ -130,8 +130,8 @@ class AmaxHistory(SolutionAmaxHistory):
             return check
 
 class BGHistory(History):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
 
     def _parse_event(self, event):
         timestamp = LE_INT.int32(event, 10)
@@ -155,8 +155,8 @@ class BGHistory(History):
         return event
 
 class TextHistory(History):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
     
     def _consume_text(self, event_data, length=-1):
         # if the length is -1, then the string is null terminated
