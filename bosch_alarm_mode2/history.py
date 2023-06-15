@@ -5,19 +5,9 @@ from .utils import BE_INT, LE_INT, Observable
 
 class History(object):
     __metaclass__ = abc.ABCMeta
-    def __init__(self) -> None:
+    def __init__(self, panel) -> None:
         self._events = []
-        self._ready = False
-        self.history_observer = Observable()
-    
-    def _init_history(self, events):
-        self._events = events
-        self._ready = True
-        self.history_observer._notify()
-
-    @property
-    def ready(self):
-        return self._ready
+        self._panel = panel
 
     @property
     def events(self):
@@ -27,11 +17,11 @@ class History(object):
     def last_event_id(self):
         if not self._events:
             return 0
-        return self._events[0][0]
+        return self._events[-1][0]
     
     def _add_event(self, event, last_event_id):
         self._events.append((last_event_id, event))
-        self.history_observer._notify()
+        self._panel.history_observer._notify()
     
     @abc.abstractmethod
     def _parse_event(self, event):

@@ -108,6 +108,7 @@ class Panel:
         self._passcode = passcode
 
         self.connection_status_observer = Observable()
+        self.history_observer = Observable()
         self._connection = None
         self._last_msg = None
         self._poll_task = None
@@ -128,19 +129,24 @@ class Panel:
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
-    LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
+    LOAD_HISTORY = 1 << 3
+    LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS | LOAD_HISTORY
 
-    async def connect(self, load_selector = LOAD_ALL):
+    async def connect(self, load_selector = LOAD_ALL, previous_history_events = []):
         loop = asyncio.get_running_loop()
         self._monitor_connection_task = loop.create_task(self._monitor_connection())
-        await self._connect(load_selector)
+        await self._connect(load_selector, previous_history_events)
 
-    async def load(self, load_selector):
+    async def load(self, load_selector, previous_history_events):
         if load_selector & self.LOAD_BASIC_INFO:
             await self._basicinfo()
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
+        if load_selector & self.LOAD_HISTORY:
+            self._history._init_history(previous_history_events)
+            if self._supports_subscriptions:
+                await self._load_history()
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
@@ -152,20 +158,9 @@ class Panel:
                 LOG.info(
                     "Panel does not support subscriptions, falling back to polling")
 
-    async def init_history(self, last_event_id, previous_events):
-        self._history._init_history(last_event_id, previous_events)
-        # If we aren't polling, then request history
-        # Otherwise, history will be fetched during the poll
-        if self._supports_subscriptions:
-            await self._load_history()
-
     @property
     def history(self):
         return self._history.events
-
-    @property
-    def last_history_id(self):
-        return self._history.last_event_id
 
     @property
     def history_observer(self):
@@ -264,8 +259,7 @@ class Panel:
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
                 await self._get_alarm_status()
-                if self._history.ready:
-                    await self._load_history()
+                await self._load_history()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
