@@ -174,19 +174,19 @@ class TextHistory(History):
         # if the length is -1, then the string is null terminated
         if length == -1:
             length = event_data.index(0)
-        text = event_data[:length]
-        event_data = event_data[length:]
-        return text
+        text = event_data[:length].strip()
+        event_data = event_data[length+1:]
+        return event_data, text.decode()
     
     def parse_events(self, start, events, count):
         self._last_event_id = start
         if not count:
             return
         for i in range(count):
-            date = self._consume_text(events, 11)
-            time = self._consume_text(events, 8)
-            text = self._consume_text(events)
-            date = datetime.datetime.strptime(f"{date} {time}","%d/%m/%Y %I:%M%p")
+            events, date = self._consume_text(events, 10)
+            events, time = self._consume_text(events, 7)
+            events, text = self._consume_text(events)
+            date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
             self._add_event(f"{date} | {text}", start + i + 1)
 
 def construct_raw_parser(panel) -> History:
