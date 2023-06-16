@@ -323,8 +323,7 @@ class Panel:
         names = await self._load_names(CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, "POINT")
         self.points = {id: Point(name) for id, name in names.items()}
 
-    async def _load_names_cf03(self, name_cmd) -> dict[int, str]:
-        names = {}
+    async def _load_names_cf03(self, name_cmd, names) -> dict[int, str]:
         id = 0
         while True:
             request = bytearray(id.to_bytes(2, 'big'))
@@ -335,7 +334,8 @@ class Panel:
             while data:
                 id = _get_int16(data)
                 name, data = data[2:].split(b'\x00', 1)
-                names[id] = name.decode('ascii')
+                if id in names:
+                    names[id] = name.decode('ascii')
         return names
 
     async def _load_names_cf01(self, name_cmd, names) -> dict[int, str]:
@@ -362,10 +362,10 @@ class Panel:
         return names
 
     async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
-        if self._supports_command_request_area_text_cf03:
-            return await self._load_names_cf03(name_cmd)
-
         names = await self._load_authorised_entities(config_cmd, type)
+        
+        if self._supports_command_request_area_text_cf03:
+            return await self._load_names_cf03(name_cmd, names)
 
         if self._supports_command_request_area_text_cf01:
             return await self._load_names_cf01(name_cmd, names)
