@@ -1,7 +1,12 @@
 import datetime
 import abc
+from typing import NamedTuple
 from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT
 from .utils import BE_INT, LE_INT
+
+class HistoryEvent(NamedTuple):
+    event_id: int
+    event: str
 
 class History:
     def __init__(self, panel, events) -> None:

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from .const import *
 from .connection import Connection
-from .history import History
+from .history import History, HistoryEvent
 from .utils import BE_INT, Observable
 
 LOG = logging.getLogger(__name__)
@@ -155,7 +155,7 @@ class Panel:
                     "Panel does not support subscriptions, falling back to polling")
 
     @property
-    def history(self) -> list[tuple(int, str)]: 
+    def history(self) -> list[HistoryEvent]: 
         return self._history.events
 
     async def disconnect(self):
