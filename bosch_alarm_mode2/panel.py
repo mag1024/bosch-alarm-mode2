@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from .const import *
 from .connection import Connection
-from .history import construct_raw_parser, TextHistory
+from .history import History
 from .utils import BE_INT, Observable
 
 LOG = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ class Panel:
         self.model = None
         self.protocol_version = None
         self.serial_number = None
-        self._history = TextHistory(self)
+        self._history = History(self, previous_history_events)
         self._history_cmd = CMD.REQUEST_TEXT_HISTORY_EVENTS
         self.areas = {}
         self.points = {}
@@ -125,13 +125,11 @@ class Panel:
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
-        self._previous_history_events = previous_history_events
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
-    LOAD_HISTORY = 1 << 3
-    LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS | LOAD_HISTORY
+    LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
 
     async def connect(self, load_selector = LOAD_ALL):
         loop = asyncio.get_running_loop()
@@ -144,13 +142,10 @@ class Panel:
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
-        if load_selector & self.LOAD_HISTORY:
-            self._history._init_history(self._previous_history_events)
-            if self._supports_subscriptions:
-                await self._load_history()
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
+            await self._load_history()
             if self._supports_subscriptions:
                 await self._subscribe()
             else:
@@ -160,7 +155,7 @@ class Panel:
                     "Panel does not support subscriptions, falling back to polling")
 
     @property
-    def history(self):
+    def history(self) -> list[tuple(int, str)]: 
         return self._history.events
 
     async def disconnect(self):
@@ -235,7 +230,7 @@ class Panel:
             # Also, the start is set to the next event id to read
             if count:
                 data = data[5:]
-            self._history.parse_events(start, data, count)
+            self._history.parse_polled_events(start, data, count)
             if count == 0:
                 break
 
@@ -328,11 +323,8 @@ class Panel:
         supports_command_request_history_text = (bitmask[5] & 0x80) != 0
         supports_command_request_history_raw_ext = (bitmask[16] & 0x02) != 0
         if not supports_command_request_history_text:
-            self._history = construct_raw_parser(data[0], self)
-            if supports_command_request_history_raw_ext:
-                self._history_cmd = CMD.REQUEST_RAW_HISTORY_EVENTS_EXT
-            else:
-                self._history_cmd = CMD.REQUEST_RAW_HISTORY_EVENTS
+            self._history.init_raw_history(data[0])
+            self._history_cmd = CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_command_request_history_raw_ext else CMD.REQUEST_RAW_HISTORY_EVENTS
         if supports_command_request_serial_read:
             data = await self._connection.send_command(
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
@@ -495,7 +487,7 @@ class Panel:
     
 
     def _event_history_consumer(self, data) -> int:
-        return self._history._parse_subscription_event(data)
+        return self._history.parse_subscription_event(data)
 
     def _on_status_update(self, data):
         CONSUMERS = {

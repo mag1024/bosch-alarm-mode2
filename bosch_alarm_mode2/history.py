@@ -1,13 +1,13 @@
 import datetime
 import abc
 from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT
-from .utils import BE_INT, LE_INT, Observable
+from .utils import BE_INT, LE_INT
 
-class History(object):
-    __metaclass__ = abc.ABCMeta
-    def __init__(self, panel) -> None:
-        self._events = []
+class History:
+    def __init__(self, panel, events) -> None:
+        self._events = events
         self._panel = panel
+        self._parser = TextHistory()
 
     @property
     def events(self):
@@ -18,29 +18,28 @@ class History(object):
         if not self._events:
             return 0
         return self._events[-1][0]
-    
-    def _add_event(self, event, last_event_id):
-        self._events.append((last_event_id, event))
-        self._panel.history_observer._notify()
-    
-    @abc.abstractmethod
-    def _parse_event(self, event):
-        return
-    
-    def _init_history(self, events):
-        self._events = events
-    
-    def parse_events(self, start, events, count):
-        if not count:
+
+    def init_raw_history(self, panel_type, panel):
+        if panel_type <= 0x21:
+            self._parser = SolutionHistory(panel)
             return
-        event_length = len(events) // count
-        for i in range(count):
-            self._add_event(self._parse_event(events), start + i + 1)
-            events = events[event_length:]
+
+        if panel_type <= 0x24:
+            self._parser = AmaxHistory(panel)
+            return
+
+        self._parser = BGHistory(panel)
     
-    def parse_subscription_event(self, event):
-        text_len = BE_INT.int16(event, 23)
-        timestamp = LE_INT.int32(event, 14)
+    def parse_polled_events(self, start, event_data, count):
+        if not self._parser:
+            return []
+        
+        self._events.extend(self._parser.parse_events(start, event_data, count))
+        self._panel.history_observer._notify()
+
+    def parse_subscription_event(self, raw_event):
+        text_len = BE_INT.int16(raw_event, 23)
+        timestamp = LE_INT.int32(raw_event, 14)
         year = 2010 + (timestamp >> 26)
         month = (timestamp >> 22) & 0x0F
         day = (timestamp >> 17) & 0x1F
@@ -48,12 +47,59 @@ class History(object):
         minute = (timestamp >> 6) & 0x3F
         second = timestamp & 0x3F
         date = datetime.datetime(year, month, day, hour, minute, second)
-        event = event[25:].decode()
-        event = f"{date} | {event}"
-        self._add_event(event, BE_INT.int16(event, 4))
+        event_text = raw_event[25:].decode()
+        event = f"{date} | {event_text}"
+        self._events.append((BE_INT.int16(raw_event, 4), event))
+        self._panel.history_observer._notify()
         return 25 + text_len
 
-class SolutionAmaxHistory(History):
+class HistoryParser(object):
+    __metaclass__ = abc.ABCMeta
+    
+    @abc.abstractmethod
+    def parse_events(self, start, event_data, count):
+        return
+    @abc.abstractmethod
+    def _parse_event(self, event):
+        return
+
+class TextHistory(HistoryParser):
+    
+    def _consume_text(self, event_data, length=-1):
+        # if the length is -1, then the string is null terminated
+        if length == -1:
+            length = event_data.index(0)
+        text = event_data[:length].strip()
+        event_data = event_data[length+1:]
+        return event_data, text.decode()
+    
+    def parse_events(self, start, event_data, count):
+        events = []
+        if not count:
+            return events
+        for i in range(count):
+            event_data, date = self._consume_text(event_data, 10)
+            event_data, time = self._consume_text(event_data, 7)
+            event_data, text = self._consume_text(event_data)
+            date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
+            events.append((start + i + 1, f"{date} | {text}"))
+        return events
+
+class RawHistory(HistoryParser):
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
+
+    def parse_events(self, start, event_data, count):
+        events = []
+        if not count:
+            return events
+        event_length = len(event_data) // count
+        for i in range(count):
+            events.append((start + i + 1, self._parse_event(event_data)))
+            event_data = event_data[event_length:]
+        return events
+
+class SolutionAmaxHistory(HistoryParser):
     def __init__(self, panel) -> None:
         super().__init__(panel)
         
@@ -131,8 +177,9 @@ class AmaxHistory(SolutionAmaxHistory):
         check = self._check_history_key(f"{id}_b4", date, first_param, second_param)
         if check and first_param in (150, 151):
             return check
+        return "Unknown event"
 
-class BGHistory(History):
+class BGHistory(HistoryParser):
     def __init__(self, panel) -> None:
         super().__init__(panel)
 
@@ -156,34 +203,3 @@ class BGHistory(History):
         event = date + B_G_HISTORY_FORMAT[event_code].format(
             area=area, param1=param1, param2=param2, param3=param3)
         return event
-
-class TextHistory(History):
-    def __init__(self, panel) -> None:
-        super().__init__(panel)
-    
-    def _consume_text(self, event_data, length=-1):
-        # if the length is -1, then the string is null terminated
-        if length == -1:
-            length = event_data.index(0)
-        text = event_data[:length].strip()
-        event_data = event_data[length+1:]
-        return event_data, text.decode()
-    
-    def parse_events(self, start, events, count):
-        if not count:
-            return
-        for i in range(count):
-            events, date = self._consume_text(events, 10)
-            events, time = self._consume_text(events, 7)
-            events, text = self._consume_text(events)
-            date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
-            self._add_event(f"{date} | {text}", start + i + 1)
-
-def construct_raw_parser(panel_type, panel) -> History:
-    if panel_type <= 0x21:
-        return SolutionHistory(panel)
-
-    if panel_type <= 0x24:
-        return AmaxHistory(panel)
-
-    return BGHistory(panel)
