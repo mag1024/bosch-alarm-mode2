@@ -1,5 +1,6 @@
 import datetime
 import abc
+import re
 from typing import NamedTuple
 from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT
 from .utils import BE_INT, LE_INT
@@ -44,19 +45,12 @@ class History:
 
     def parse_subscription_event(self, raw_event):
         text_len = BE_INT.int16(raw_event, 23)
-        timestamp = LE_INT.int32(raw_event, 14)
-        year = 2010 + (timestamp >> 26)
-        month = (timestamp >> 22) & 0x0F
-        day = (timestamp >> 17) & 0x1F
-        hour = (timestamp >> 12) & 0x1F
-        minute = (timestamp >> 6) & 0x3F
-        second = timestamp & 0x3F
-        date = datetime.datetime(year, month, day, hour, minute, second)
-        event_text = raw_event[25:].decode()
-        event = f"{date} | {event_text}"
-        self._events.append((BE_INT.int16(raw_event, 4), event))
+        line = raw_event[25:].decode()
+        date, time, message = re.split(r"\s+", line, 2)
+        date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
+        self._events.append((BE_INT.int16(raw_event, 4), f"{date} | {message}"))
         self._panel.history_observer._notify()
-        return 25 + text_len
+        return 25 + text_len + 1
 
 class HistoryParser(object):
     __metaclass__ = abc.ABCMeta
@@ -65,25 +59,17 @@ class HistoryParser(object):
     def parse_events(self, start, event_data, count):
         return
 
-class TextHistory(HistoryParser):
-    def _consume_text(self, event_data, length=-1):
-        # if the length is -1, then the string is null terminated
-        if length == -1:
-            length = event_data.index(0)
-        text = event_data[:length].strip()
-        event_data = event_data[length+1:]
-        return event_data, text.decode()
-    
+class TextHistory(HistoryParser):    
     def parse_events(self, start, event_data, count):
         events = []
         if not count:
             return events
         for i in range(count):
-            event_data, date = self._consume_text(event_data, 10)
-            event_data, time = self._consume_text(event_data, 7)
-            event_data, text = self._consume_text(event_data)
+            line = event_data[:event_data.index(0)].decode()
+            date, time, message = re.split(r"\s+", line, 2)
             date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
-            events.append((start + i + 1, f"{date} | {text}"))
+            events.append((start + i + 1, f"{date} | {message}"))
+            event_data = event_data[len(line)+1:]
         return events
 
 class RawHistory(HistoryParser):
