@@ -24,16 +24,16 @@ class History:
             return 0
         return self._events[-1][0]
 
-    def init_raw_history(self, panel_type, panel):
+    def init_raw_history(self, panel_type):
         if panel_type <= 0x21:
-            self._parser = SolutionHistory(panel)
+            self._parser = SolutionHistory()
             return
 
         if panel_type <= 0x24:
-            self._parser = AmaxHistory(panel)
+            self._parser = AmaxHistory()
             return
 
-        self._parser = BGHistory(panel)
+        self._parser = BGHistory()
     
     def parse_polled_events(self, start, event_data, count):
         if not self._parser:
@@ -64,12 +64,8 @@ class HistoryParser(object):
     @abc.abstractmethod
     def parse_events(self, start, event_data, count):
         return
-    @abc.abstractmethod
-    def _parse_event(self, event):
-        return
 
 class TextHistory(HistoryParser):
-    
     def _consume_text(self, event_data, length=-1):
         # if the length is -1, then the string is null terminated
         if length == -1:
@@ -91,9 +87,6 @@ class TextHistory(HistoryParser):
         return events
 
 class RawHistory(HistoryParser):
-    def __init__(self, panel) -> None:
-        super().__init__(panel)
-
     def parse_events(self, start, event_data, count):
         events = []
         if not count:
@@ -103,11 +96,11 @@ class RawHistory(HistoryParser):
             events.append((start + i + 1, self._parse_event(event_data)))
             event_data = event_data[event_length:]
         return events
+    @abc.abstractmethod
+    def _parse_event(self, event):
+        return
 
-class SolutionAmaxHistory(HistoryParser):
-    def __init__(self, panel) -> None:
-        super().__init__(panel)
-        
+class SolutionAmaxHistory(RawHistory):
     def _parse_params(self, event):
         timestamp = LE_INT.int16(event)
         minute = timestamp & 0x3F
@@ -132,8 +125,6 @@ class SolutionHistory(SolutionAmaxHistory):
         998: "A-Link",
         999: "Installer",
     }
-    def __init__(self, panel) -> None:
-        super().__init__(panel)
     
     def _parse_event(self, event):
         (event_code, date, first_param, second_param) = self._parse_params(event)
@@ -148,9 +139,6 @@ class SolutionHistory(SolutionAmaxHistory):
             user=user, param1=first_param, param2=second_param)
 
 class AmaxHistory(SolutionAmaxHistory):
-    def __init__(self, panel) -> None:
-        super().__init__(panel)
-    
     def _check_history_key(self, id, date, first_param, second_param):
         if id in AMAX_HISTORY_FORMAT:
             return date + AMAX_HISTORY_FORMAT[id].format(param1=first_param, param2=second_param)
@@ -184,10 +172,7 @@ class AmaxHistory(SolutionAmaxHistory):
             return check
         return "Unknown event"
 
-class BGHistory(HistoryParser):
-    def __init__(self, panel) -> None:
-        super().__init__(panel)
-
+class BGHistory(RawHistory):
     def _parse_event(self, event):
         timestamp = LE_INT.int32(event, 10)
         year = 2010 + (timestamp >> 26)
