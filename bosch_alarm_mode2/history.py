@@ -45,12 +45,13 @@ class History:
 
     def parse_subscription_event(self, raw_event):
         text_len = BE_INT.int16(raw_event, 23)
-        line = raw_event[25:25 + text_len].decode()
+        total_len = 25 + text_len
+        line = raw_event[25:total_len].decode()
         date, time, message = re.split(r"\s+", line, 2)
         date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
         self._events.append((BE_INT.int16(raw_event, 4), f"{date} | {message}"))
         self._panel.history_observer._notify()
-        return 25 + text_len
+        return total_len
 
 class HistoryParser(object):
     __metaclass__ = abc.ABCMeta
