@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 from .const import *
 from .connection import Connection
+from .history import History, HistoryEvent
+from .utils import BE_INT, Observable
 
 LOG = logging.getLogger(__name__)
 
@@ -12,22 +14,6 @@ ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
-
-def _get_int8(data, offset = 0):
-    return int.from_bytes(data[offset:offset+1], 'big')
-def _get_int16(data, offset = 0):
-    return int.from_bytes(data[offset:offset+2], 'big')
-
-class Observable:
-    def __init__(self):
-        self._observers = []
-
-    def attach(self, observer): self._observers.append(observer)
-    def detach(self, observer): self._observers.remove(observer)
-
-    def _notify(self):
-        for observer in self._observers: observer()
-
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -115,13 +101,14 @@ class Point(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, passcode):
+    def __init__(self, host, port, passcode, previous_history_events = []):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
         self._passcode = passcode
 
         self.connection_status_observer = Observable()
+        self.history_observer = Observable()
         self._connection = None
         self._last_msg = None
         self._poll_task = None
@@ -129,6 +116,8 @@ class Panel:
         self.model = None
         self.protocol_version = None
         self.serial_number = None
+        self._history = History(self, previous_history_events)
+        self._history_cmd = CMD.REQUEST_TEXT_HISTORY_EVENTS
         self.areas = {}
         self.points = {}
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
@@ -156,6 +145,7 @@ class Panel:
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
+            await self._load_history()
             if self._supports_subscriptions:
                 await self._subscribe()
             else:
@@ -163,6 +153,10 @@ class Panel:
                 self._poll_task = loop.create_task(self._poll())
                 LOG.info(
                     "Panel does not support subscriptions, falling back to polling")
+
+    @property
+    def history(self) -> list[HistoryEvent]: 
+        return self._history.events
 
     async def disconnect(self):
         if self._monitor_connection_task:
@@ -225,6 +219,21 @@ class Panel:
             self._poll_task.cancel()
             self._poll_task = None
 
+    async def _load_history(self):
+        while True:
+            request = bytearray([0xFF])
+            request.extend(self._history.last_event_id.to_bytes(4, 'big'))
+            data = await self._connection.send_command(self._history_cmd, request) 
+            count = data[0]
+            start = BE_INT.int32(data, 1)
+            # When all events are read, a count of zero is returned
+            # Also, the start is set to the next event id to read
+            if count:
+                data = data[5:]
+            self._history.parse_polled_events(start, data, count)
+            if count == 0:
+                break
+
     async def _monitor_connection(self):
         while True:
             try:
@@ -242,6 +251,7 @@ class Panel:
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
                 await self._get_alarm_status()
+                await self._load_history()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -309,8 +319,13 @@ class Panel:
         self._supports_subscriptions = (bitmask[0] & 0x40) != 0
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
-        # Check if serial read command is supported before sending it
-        if (bitmask[13] & 0x04) != 0:
+        supports_command_request_serial_read = (bitmask[13] & 0x04) != 0
+        supports_command_request_history_text = (bitmask[5] & 0x80) != 0
+        supports_command_request_history_raw_ext = (bitmask[16] & 0x02) != 0
+        if not supports_command_request_history_text:
+            self._history.init_raw_history(data[0])
+            self._history_cmd = CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_command_request_history_raw_ext else CMD.REQUEST_RAW_HISTORY_EVENTS
+        if supports_command_request_serial_read:
             data = await self._connection.send_command(
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
@@ -333,7 +348,7 @@ class Panel:
             data = await self._connection.send_command(name_cmd, request)
             if not data: break
             while data:
-                id = _get_int16(data)
+                id = BE_INT.int16(data)
                 name, data = data[2:].split(b'\x00', 1)
                 names[id] = name.decode('ascii')
         return names
@@ -380,9 +395,9 @@ class Panel:
             request.append(last_point.to_bytes(2, 'big'))
         response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
         while response_detail:
-            area = _get_int16(response_detail)
+            area = BE_INT.int16(response_detail)
             # item_type = response_detail[2]
-            point = _get_int16(response_detail, 3)
+            point = BE_INT.int16(response_detail, 3)
             if point == 0xFFFF:
                 await self._get_alarms_for_priority(priority, area, point)
             if area in self.areas:
@@ -396,7 +411,7 @@ class Panel:
         data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
-            count = _get_int16(data, i)
+            count = BE_INT.int16(data, i)
             if count:
                 await self._get_alarms_for_priority(priority)
             else:
@@ -409,7 +424,7 @@ class Panel:
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
         response = await self._connection.send_command(status_cmd, request)
         while response:
-            entities[_get_int16(response)].status = response[2]
+            entities[BE_INT.int16(response)].status = response[2]
             response = response[3:]
 
     async def _area_arm(self, area_id, arm_type):
@@ -425,7 +440,7 @@ class Panel:
         data = bytearray(b'\x01') # format
         data += SUBSCRIBE # confidence / heartbeat
         data += SUBSCRIBE # event mem
-        data += IGNORE    # event log
+        data += SUBSCRIBE # event log
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
@@ -436,32 +451,32 @@ class Panel:
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
     def _area_on_off_consumer(self, data) -> int:
-        area_id = _get_int16(data)
+        area_id = BE_INT.int16(data)
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
         return 3
 
     def _area_ready_consumer(self, data) -> int:
-        area_id = _get_int16(data)
+        area_id = BE_INT.int16(data)
         # Skip message if it is for an unconfigured area
         if area_id not in self.areas:
             return 5
         ready_status = data[2]
-        faults = _get_int16(data, 3)
+        faults = BE_INT.int16(data, 3)
         self.areas[area_id]._set_ready(ready_status, faults)
         LOG.debug("Area %d: %s (%d faults)" % (
             area_id, AREA_READY[ready_status], faults))
         return 5
 
     def _point_status_consumer(self, data) -> int:
-        point_id = _get_int16(data)
+        point_id = BE_INT.int16(data)
         self.points[point_id].status = data[2]
         LOG.debug("Point updated: %s", self.points[point_id])
         return 3
 
     def _event_summary_consumer(self, data) -> int:
         priority = data[0]
-        count = _get_int16(data, 1)
+        count = BE_INT.int16(data, 1)
         if count:
             asyncio.create_task(self._get_alarms_for_priority(priority))
         else:
@@ -469,11 +484,16 @@ class Panel:
             for area in self.areas.values():
                 area._set_alarm(priority, False)
         return 3
+    
+
+    def _event_history_consumer(self, data) -> int:
+        return self._history.parse_subscription_event(data)
 
     def _on_status_update(self, data):
         CONSUMERS = {
             0x00: lambda data: 0,  # heartbeat
             0x01: self._event_summary_consumer,
+            0x02: self._event_history_consumer,
             0x04: self._area_on_off_consumer,
             0x05: self._area_ready_consumer,
             0x07: self._point_status_consumer,
