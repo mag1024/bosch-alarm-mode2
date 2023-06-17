@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from .const import *
 from .connection import Connection
 from .history import History, HistoryEvent
+from .history_const import NO_EVENTS, EVENT_LOOKBACK_COUNT
 from .utils import BE_INT, Observable
 
 LOG = logging.getLogger(__name__)
@@ -219,18 +220,31 @@ class Panel:
             self._poll_task.cancel()
             self._poll_task = None
 
+    async def _read_history(self, start):
+        request = bytearray([0xFF])
+        request.extend(start.to_bytes(4, 'big'))
+        data = await self._connection.send_command(self._history_cmd, request) 
+        self._last_msg = datetime.now()
+        count = data[0]
+        start = BE_INT.int32(data, 1)
+
+        # When all events are read, a count of zero is returned
+        # Also, the start is set to the next event id to read
+        if count:
+            data = data[5:]
+        self._history.parse_polled_events(start, data, count)
+        return start, count
+
     async def _load_history(self):
+        if self._history.last_event_id == NO_EVENTS:
+            start, count = await self._read_history(self._history.last_event_id)
+            start -= EVENT_LOOKBACK_COUNT
+            start = max(0, start)
+            start, count = await self._read_history(start)
+            if count == 0:
+                return
         while True:
-            request = bytearray([0xFF])
-            request.extend(self._history.last_event_id.to_bytes(4, 'big'))
-            data = await self._connection.send_command(self._history_cmd, request) 
-            count = data[0]
-            start = BE_INT.int32(data, 1)
-            # When all events are read, a count of zero is returned
-            # Also, the start is set to the next event id to read
-            if count:
-                data = data[5:]
-            self._history.parse_polled_events(start, data, count)
+            start, count = await self._read_history(self._history.last_event_id)
             if count == 0:
                 break
 

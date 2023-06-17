@@ -2,7 +2,7 @@ import datetime
 import abc
 import re
 from typing import NamedTuple
-from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT
+from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT, NO_EVENTS
 from .utils import BE_INT, LE_INT
 
 class HistoryEvent(NamedTuple):
@@ -22,7 +22,7 @@ class History:
     @property
     def last_event_id(self):
         if not self._events:
-            return 0
+            return NO_EVENTS
         return self._events[-1][0]
 
     def init_raw_history(self, panel_type):
