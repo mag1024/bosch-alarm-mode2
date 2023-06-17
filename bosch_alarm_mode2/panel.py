@@ -236,15 +236,14 @@ class Panel:
         return start, count
 
     async def _load_history(self):
-        if self._history.last_event_id == NO_EVENTS:
-            start, count = await self._read_history(self._history.last_event_id)
-            start -= EVENT_LOOKBACK_COUNT
-            start = max(0, start)
-            start, count = await self._read_history(start)
-            if count == 0:
-                return
+        load_old_events = self._history.last_event_id == NO_EVENTS
         while True:
             start, count = await self._read_history(self._history.last_event_id)
+            if load_old_events:
+                start -= EVENT_LOOKBACK_COUNT
+                start = max(0, start)
+                start, count = await self._read_history(start)
+                load_old_events = False
             if count == 0:
                 break
 
