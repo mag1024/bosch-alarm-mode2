@@ -3,11 +3,11 @@ import logging
 import re
 from datetime import datetime
 from typing import NamedTuple
-from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT, NO_EVENTS
+from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT, NO_EVENTS, EVENT_LOOKBACK_COUNT
 from .utils import BE_INT, LE_INT
 
 LOG = logging.getLogger(__name__)
-
+SENTINEL_EVENT="First event"
 class HistoryEvent(NamedTuple):
     event_id: int
     event: str
@@ -36,21 +36,30 @@ class History:
         else:
             self._parser = BGHistory()
     
-    def parse_polled_events(self, start, event_data, count):
-        if not self._parser:
-            return []
-        
-        try:
-            events = self._parser.parse_events(start, event_data, count)
-            for (id, text) in events:
-                LOG.debug(f"[{id}]: {text}")
-            self._events.extend(events)
-        except Exception as e:
-            error_str = f"parse error: {repr(e)}"
-            LOG.error("History event " + error_str)
-            self._events.append((start + count + 1, error_str))
+    def parse_polled_events(self, event_data):        
+        count = event_data[0]
+        start = BE_INT.int32(event_data, 1)
+        event_data = event_data[5:]
+        if self.last_event_id == NO_EVENTS:
+            start -= EVENT_LOOKBACK_COUNT
+            start = max(0, start)
+            self._events.append((start, SENTINEL_EVENT))
+            return True
+        if count:
+            if self._events[0][0] == SENTINEL_EVENT:
+                self._events = []
+            try:
+                events = self._parser.parse_events(start, event_data, count)
+                for (id, text) in events:
+                    LOG.debug(f"[{id}]: {text}")
+                self._events.extend(events)
+            except Exception as e:
+                error_str = f"parse error: {repr(e)}"
+                LOG.error("History event " + error_str)
+                self._events.append((start + count + 1, error_str))
 
-        self._panel.history_observer._notify()
+            self._panel.history_observer._notify()
+        return count
 
     def parse_subscription_event(self, raw_event):
         text_len = BE_INT.int16(raw_event, 23)

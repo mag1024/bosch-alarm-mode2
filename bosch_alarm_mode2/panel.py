@@ -220,31 +220,13 @@ class Panel:
             self._poll_task.cancel()
             self._poll_task = None
 
-    async def _read_history(self, start):
-        request = bytearray([0xFF])
-        request.extend(start.to_bytes(4, 'big'))
-        data = await self._connection.send_command(self._history_cmd, request) 
-        self._last_msg = datetime.now()
-        count = data[0]
-        start = BE_INT.int32(data, 1)
-
-        # When all events are read, a count of zero is returned
-        # Also, the start is set to the next event id to read
-        if count:
-            data = data[5:]
-        self._history.parse_polled_events(start, data, count)
-        return start, count
-
     async def _load_history(self):
-        load_old_events = self._history.last_event_id == NO_EVENTS
         while True:
-            start, count = await self._read_history(self._history.last_event_id)
-            if load_old_events:
-                start -= EVENT_LOOKBACK_COUNT
-                start = max(0, start)
-                start, count = await self._read_history(start)
-                load_old_events = False
-            if count == 0:
+            request = bytearray([0xFF])
+            request.extend(self._history.last_event_id.to_bytes(4, 'big'))
+            data = await self._connection.send_command(self._history_cmd, request) 
+            self._last_msg = datetime.now()
+            if not self._history.parse_polled_events(data):
                 break
 
     async def _monitor_connection(self):
