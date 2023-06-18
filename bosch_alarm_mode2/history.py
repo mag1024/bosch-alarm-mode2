@@ -1,9 +1,12 @@
-import datetime
 import abc
+import logging
 import re
+from datetime import datetime
 from typing import NamedTuple
 from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT, NO_EVENTS
 from .utils import BE_INT, LE_INT
+
+LOG = logging.getLogger(__name__)
 
 class HistoryEvent(NamedTuple):
     event_id: int
@@ -28,19 +31,25 @@ class History:
     def init_raw_history(self, panel_type):
         if panel_type <= 0x21:
             self._parser = SolutionHistory()
-            return
-
-        if panel_type <= 0x24:
+        elif panel_type <= 0x24:
             self._parser = AmaxHistory()
-            return
-
-        self._parser = BGHistory()
+        else:
+            self._parser = BGHistory()
     
     def parse_polled_events(self, start, event_data, count):
         if not self._parser:
             return []
         
-        self._events.extend(self._parser.parse_events(start, event_data, count))
+        try:
+            events = self._parser.parse_events(start, event_data, count)
+            for (id, text) in events:
+                LOG.debug(f"[{id}]: {text}")
+            self._events.extend(events)
+        except Exception as e:
+            error_str = f"parse error: {repr(e)}"
+            LOG.error("History event " + error_str)
+            self._events.append((start + count + 1, error_str))
+
         self._panel.history_observer._notify()
 
     def parse_subscription_event(self, raw_event):
@@ -49,7 +58,7 @@ class History:
         line = raw_event[25:total_len - 1].decode()
         # Not sure why, but there is an extra 0 in subscription text
         date, time, _, message = re.split(r"\s+", line, 3)
-        date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
+        date = datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
         self._events.append((BE_INT.int16(raw_event, 4), f"{date} | {message}"))
         self._panel.history_observer._notify()
         return total_len
@@ -69,7 +78,7 @@ class TextHistory(HistoryParser):
         for i in range(count):
             line = event_data[:event_data.index(0)].decode()
             date, time, message = re.split(r"\s+", line, 2)
-            date = datetime.datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
+            date = datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
             events.append((start + i + 1, f"{date} | {message}"))
             event_data = event_data[len(line)+1:]
         return events
@@ -101,7 +110,7 @@ class SolutionAmaxHistory(RawHistory):
         first_param = LE_INT.int16(event, 4)
         second_param = event[7]
         event_code = event[6]
-        date = datetime.datetime(year, month, day, hour, minute, second)
+        date = datetime(year, month, day, hour, minute, second)
         return (event_code, date, first_param, second_param)
 
 class SolutionHistory(SolutionAmaxHistory):
@@ -162,7 +171,7 @@ class AmaxHistory(SolutionAmaxHistory):
 
 class BGHistory(RawHistory):
     def _parse_event(self, event):
-        timestamp = LE_INT.int32(event, 10)
+        timestamp = BE_INT.int32(event, 10)
         year = 2010 + (timestamp >> 26)
         month = (timestamp >> 22) & 0x0F
         day = (timestamp >> 17) & 0x1F
@@ -170,14 +179,12 @@ class BGHistory(RawHistory):
         minute = (timestamp >> 6) & 0x3F
         second = timestamp & 0x3F
 
-        date = datetime.datetime(year, month, day, hour, minute, second)
-        event_code = LE_INT.int16(event)
-        area = LE_INT.int16(event, 2)
-        param1 = LE_INT.int16(event, 4)
-        param2 = LE_INT.int16(event, 6)
-        param3 = LE_INT.int16(event, 8)
+        date = datetime(year, month, day, hour, minute, second)
+        event_code = str(BE_INT.int16(event))
+        area = BE_INT.int16(event, 2)
+        param1 = BE_INT.int16(event, 4)
+        param2 = BE_INT.int16(event, 6)
+        param3 = BE_INT.int16(event, 8)
         date = f"{date} | "
-        event_code = str(event_code)
-        event = date + B_G_HISTORY_FORMAT[event_code].format(
+        return date + B_G_HISTORY_FORMAT[event_code].format(
             area=area, param1=param1, param2=param2, param3=param3)
-        return event
