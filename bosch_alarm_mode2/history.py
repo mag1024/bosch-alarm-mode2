@@ -45,9 +45,9 @@ class History:
             start = max(0, start)
             self._events.append((start, SENTINEL_EVENT))
             return True
+        elif self._events[0][1] == SENTINEL_EVENT:
+            self._events = []
         if count:
-            if self._events[0][0] == SENTINEL_EVENT:
-                self._events = []
             try:
                 events = self._parser.parse_events(start, event_data, count)
                 for (id, text) in events:

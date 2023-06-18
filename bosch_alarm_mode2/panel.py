@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from .const import *
 from .connection import Connection
 from .history import History, HistoryEvent
-from .history_const import NO_EVENTS, EVENT_LOOKBACK_COUNT
 from .utils import BE_INT, Observable
 
 LOG = logging.getLogger(__name__)
