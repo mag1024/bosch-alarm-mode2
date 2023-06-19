@@ -25,9 +25,7 @@ class History:
         # Requesting a very large starting event id causes the panel to reply
         # with the event number of the next event to be written to the history,
         # allowing us to discover the max existing event id.
-        if not self._events:
-            return 0xFFFFFFFF
-        return self._events[-1][0]
+        return self._events[-1][0] if self._events else 0xFFFFFFFF
 
     def init_raw_history(self, panel_type):
         if panel_type <= 0x21:
@@ -42,7 +40,7 @@ class History:
         start = BE_INT.int32(event_data, 1) + 1
         event_data = event_data[5:]
         if count == 0 and len(self._events) == 0:
-            return max(0, start - EVENT_LOOKBACK_COUNT)
+            return max(0, start - EVENT_LOOKBACK_COUNT - 1)
         if not count:
             return None
 

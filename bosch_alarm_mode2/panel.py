@@ -1,6 +1,7 @@
 import asyncio
-import ssl
 import logging
+import ssl
+import time
 from datetime import datetime, timedelta
 
 from .const import *
@@ -220,6 +221,8 @@ class Panel:
             self._poll_task = None
 
     async def _load_history(self):
+        start_size = len(self.history)
+        start_t = time.perf_counter()
         event_id = self._history.last_event_id
         while event_id is not None:
             request = bytearray(b'\xFF')
@@ -228,6 +231,9 @@ class Panel:
             self._last_msg = datetime.now()
             if (event_id := self._history.parse_polled_events(data)):
                 self.history_observer._notify()
+        if len(self.history) != start_size:
+            LOG.debug("Loaded %d history events in %.2fs" % (
+                len(self.history) - start_size, time.perf_counter() - start_t))
 
     async def _monitor_connection(self):
         while True:
