@@ -3,19 +3,17 @@ import logging
 import re
 from datetime import datetime
 from typing import NamedTuple
-from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT, NO_EVENTS, EVENT_LOOKBACK_COUNT
+from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT, EVENT_LOOKBACK_COUNT
 from .utils import BE_INT, LE_INT
 
 LOG = logging.getLogger(__name__)
-SENTINEL_EVENT="First event"
 class HistoryEvent(NamedTuple):
     event_id: int
     event: str
 
 class History:
-    def __init__(self, panel, events) -> None:
+    def __init__(self, events) -> None:
         self._events = events
-        self._panel = panel
         self._parser = TextHistory()
 
     @property
@@ -24,8 +22,11 @@ class History:
 
     @property
     def last_event_id(self):
+        # Requesting a very large starting event id causes the panel to reply
+        # with the event number of the next event to be written to the history,
+        # allowing us to discover the max existing event id.
         if not self._events:
-            return NO_EVENTS
+            return 0xFFFFFFFF
         return self._events[-1][0]
 
     def init_raw_history(self, panel_type):
@@ -35,31 +36,26 @@ class History:
             self._parser = AmaxHistory()
         else:
             self._parser = BGHistory()
-    
-    def parse_polled_events(self, event_data):        
-        count = event_data[0]
-        start = BE_INT.int32(event_data, 1)
-        event_data = event_data[5:]
-        if self.last_event_id == NO_EVENTS:
-            start -= EVENT_LOOKBACK_COUNT
-            start = max(0, start)
-            self._events.append((start, SENTINEL_EVENT))
-            return True
-        elif self._events[0][1] == SENTINEL_EVENT:
-            self._events = []
-        if count:
-            try:
-                events = self._parser.parse_events(start, event_data, count)
-                for (id, text) in events:
-                    LOG.debug(f"[{id}]: {text}")
-                self._events.extend(events)
-            except Exception as e:
-                error_str = f"parse error: {repr(e)}"
-                LOG.error("History event " + error_str)
-                self._events.append((start + count + 1, error_str))
 
-            self._panel.history_observer._notify()
-        return count
+    def parse_polled_events(self, event_data):
+        count = event_data[0]
+        start = BE_INT.int32(event_data, 1) + 1
+        event_data = event_data[5:]
+        if count == 0 and len(self._events) == 0:
+            return max(0, start - EVENT_LOOKBACK_COUNT)
+        if not count:
+            return None
+
+        try:
+            events = self._parser.parse_events(start, event_data, count)
+            for (id, text) in events:
+                LOG.debug(f"[{id}]: {text}")
+            self._events.extend(events)
+        except Exception as e:
+            error_str = f"parse error: {repr(e)}"
+            LOG.error("History event " + error_str)
+            self._events.append((start + count, error_str))
+        return self.last_event_id
 
     def parse_subscription_event(self, raw_event):
         text_len = BE_INT.int16(raw_event, 23)
@@ -69,37 +65,32 @@ class History:
         date, time, _, message = re.split(r"\s+", line, 3)
         date = datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
         self._events.append((BE_INT.int16(raw_event, 4), f"{date} | {message}"))
-        self._panel.history_observer._notify()
         return total_len
 
 class HistoryParser(object):
     __metaclass__ = abc.ABCMeta
-    
+
     @abc.abstractmethod
     def parse_events(self, start, event_data, count):
-        return
+        pass
 
-class TextHistory(HistoryParser):    
+class TextHistory(HistoryParser):
     def parse_events(self, start, event_data, count):
         events = []
-        if not count:
-            return events
         for i in range(count):
             line = event_data[:event_data.index(0)].decode()
             date, time, message = re.split(r"\s+", line, 2)
             date = datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
-            events.append((start + i + 1, f"{date} | {message}"))
+            events.append((start + i, f"{date} | {message}"))
             event_data = event_data[len(line)+1:]
         return events
 
 class RawHistory(HistoryParser):
     def parse_events(self, start, event_data, count):
         events = []
-        if not count:
-            return events
         event_length = len(event_data) // count
         for i in range(count):
-            events.append((start + i + 1, self._parse_event(event_data)))
+            events.append((start + i, self._parse_event(event_data)))
             event_data = event_data[event_length:]
         return events
     @abc.abstractmethod
@@ -131,7 +122,7 @@ class SolutionHistory(SolutionAmaxHistory):
         998: "A-Link",
         999: "Installer",
     }
-    
+
     def _parse_event(self, event):
         (event_code, date, first_param, second_param) = self._parse_params(event)
         date = f"{date} | "

@@ -116,7 +116,7 @@ class Panel:
         self.model = None
         self.protocol_version = None
         self.serial_number = None
-        self._history = History(self, previous_history_events)
+        self._history = History(previous_history_events)
         self._history_cmd = CMD.REQUEST_TEXT_HISTORY_EVENTS
         self.areas = {}
         self.points = {}
@@ -220,13 +220,14 @@ class Panel:
             self._poll_task = None
 
     async def _load_history(self):
-        while True:
-            request = bytearray([0xFF])
-            request.extend(self._history.last_event_id.to_bytes(4, 'big'))
+        event_id = self._history.last_event_id
+        while event_id is not None:
+            request = bytearray(b'\xFF')
+            request.extend(event_id.to_bytes(4, 'big'))
             data = await self._connection.send_command(self._history_cmd, request) 
             self._last_msg = datetime.now()
-            if not self._history.parse_polled_events(data):
-                break
+            if (event_id := self._history.parse_polled_events(data)):
+                self.history_observer._notify()
 
     async def _monitor_connection(self):
         while True:
@@ -481,7 +482,9 @@ class Panel:
     
 
     def _event_history_consumer(self, data) -> int:
-        return self._history.parse_subscription_event(data)
+        r = self._history.parse_subscription_event(data)
+        self.history_observer._notify()
+        return r
 
     def _on_status_update(self, data):
         CONSUMERS = {
