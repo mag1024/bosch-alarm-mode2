@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from .const import *
+from .utils import BE_INT
 
 LOG = logging.getLogger(__name__)
 
@@ -28,8 +29,8 @@ class Connection(asyncio.Protocol):
         self._consume_buffer()
 
     def send_command(self, code, data = bytearray()) -> asyncio.Future:
-        request = bytearray(b'\x01')  # protocol version
-        request.append(len(data) + 1)
+        request = bytearray(b'\x04')  # protocol version
+        request.extend((len(data) + 1).to_bytes(2, 'big'))
         request.append(code)
         request.extend(data)
         response = asyncio.get_running_loop().create_future()
@@ -51,9 +52,13 @@ class Connection(asyncio.Protocol):
                 if len(self._buffer) < msg_len: break
                 self._process_response(self._buffer[2:msg_len])
             elif self._buffer[0] == 0x02:
-                msg_len = int.from_bytes(self._buffer[1:3], 'big') + 3
+                msg_len = BE_INT.int16(self._buffer, 1) + 3
                 if len(self._buffer) < msg_len: break
                 self._on_status_update(self._buffer[3:msg_len])
+            elif self._buffer[0] == 0x04:
+                msg_len = BE_INT.int16(self._buffer, 1) + 3
+                if len(self._buffer) < msg_len: break
+                self._process_response(self._buffer[3:msg_len])
             else:
                 raise RuntimeError('unknown protocol ' + str(self._buffer))
             self._buffer = self._buffer[msg_len:]
