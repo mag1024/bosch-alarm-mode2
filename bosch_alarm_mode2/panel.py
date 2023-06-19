@@ -155,7 +155,7 @@ class Panel:
                     "Panel does not support subscriptions, falling back to polling")
 
     @property
-    def history(self) -> list[HistoryEvent]: 
+    def history(self) -> list[HistoryEvent]:
         return self._history.events
 
     async def disconnect(self):
@@ -224,7 +224,7 @@ class Panel:
         while event_id is not None:
             request = bytearray(b'\xFF')
             request.extend(event_id.to_bytes(4, 'big'))
-            data = await self._connection.send_command(self._history_cmd, request) 
+            data = await self._connection.send_command(self._history_cmd, request)
             self._last_msg = datetime.now()
             if (event_id := self._history.parse_polled_events(data)):
                 self.history_observer._notify()
@@ -291,7 +291,6 @@ class Panel:
                     "Max Connections"][result[0]]
             raise PermissionError("Authentication failed: " + error)
         LOG.debug("Authentication success!")
-            
 
     async def _basicinfo(self):
         try:
@@ -314,13 +313,15 @@ class Panel:
         self._supports_subscriptions = (bitmask[0] & 0x40) != 0
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
-        supports_command_request_serial_read = (bitmask[13] & 0x04) != 0
-        supports_command_request_history_text = (bitmask[5] & 0x80) != 0
-        supports_command_request_history_raw_ext = (bitmask[16] & 0x02) != 0
-        if not supports_command_request_history_text:
+        supports_history_text = (bitmask[5] & 0x80) != 0
+        supports_history_raw_ext = (bitmask[16] & 0x02) != 0
+        if not supports_history_text:
             self._history.init_raw_history(data[0])
-            self._history_cmd = CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_command_request_history_raw_ext else CMD.REQUEST_RAW_HISTORY_EVENTS
-        if supports_command_request_serial_read:
+            self._history_cmd = (
+                    CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_history_raw_ext else
+                    CMD.REQUEST_RAW_HISTORY_EVENTS)
+        supports_serial_read = (bitmask[13] & 0x04) != 0
+        if supports_serial_read:
             data = await self._connection.send_command(
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
@@ -373,7 +374,7 @@ class Panel:
 
     async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
         names = await self._load_authorised_entities(config_cmd, type)
-        
+
         if self._supports_command_request_area_text_cf03:
             return await self._load_names_cf03(name_cmd, names)
 
@@ -479,7 +480,6 @@ class Panel:
             for area in self.areas.values():
                 area._set_alarm(priority, False)
         return 3
-    
 
     def _event_history_consumer(self, data) -> int:
         r = self._history.parse_subscription_event(data)
