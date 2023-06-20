@@ -39,6 +39,8 @@ class History:
         count = event_data[0]
         start = BE_INT.int32(event_data, 1) + 1
         event_data = event_data[5:]
+        # Panels can have large numbers of history events, which take a very
+        # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
         if count == 0 and len(self._events) == 0:
             return max(0, start - EVENT_LOOKBACK_COUNT - 1)
         if not count:
