@@ -1,5 +1,4 @@
-
-
+EVENT_LOOKBACK_COUNT = 30
 
 B_G_HISTORY_FORMAT = {
     "0": "End of Log Marker1",
