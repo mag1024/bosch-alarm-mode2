@@ -208,6 +208,7 @@ class Panel:
         self._last_msg = datetime.now()
         self._connection = connection
         await self._authenticate()
+        LOG.debug("Authentication success!")
         await self.load(load_selector)
         self.connection_status_observer._notify()
 
@@ -286,20 +287,22 @@ class Panel:
         creds.extend(map(ord, self._passcode))
         creds.append(0x00) # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
-        if result != b'\x01':
-            if self._passcode.isnumeric():
-                LOG.info("Authentication failed, trying remote user")
-                try:
-                    await self._login_remote_user()
-                    LOG.debug("Authentication success!")
-                    return
-                except Exception:
-                    pass
-            self._connection.close()
-            error = ["Not Authorized", "Authorized",
-                    "Max Connections"][result[0]]
-            raise PermissionError("Authentication failed: " + error)
-        LOG.debug("Authentication success!")
+        if result and result[0] == 0x01:
+            return
+
+        # Fallback on user authentication
+        if self._passcode.isnumeric():
+            LOG.info("Authentication failed, trying remote user")
+            try:
+                await self._login_remote_user()
+                return
+            except Exception:
+                pass
+
+        self._connection.close()
+        error = ["Not Authorized", "Authorized",
+                "Max Connections"][result[0] if result else 0]
+        raise PermissionError("Authentication failed: " + error)
 
     async def _basicinfo(self):
         try:
