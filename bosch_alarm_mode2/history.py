@@ -7,9 +7,13 @@ from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HIS
 from .utils import BE_INT, LE_INT
 
 LOG = logging.getLogger(__name__)
+
 class HistoryEvent(NamedTuple):
     event_id: int
     event: str
+
+    def __repr__(self):
+        return f"[{self.event_id}] {self.event}"
 
 class History:
     def __init__(self, events) -> None:
@@ -41,20 +45,19 @@ class History:
         event_data = event_data[5:]
         # Panels can have large numbers of history events, which take a very
         # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
-        if count == 0 and len(self._events) == 0:
-            return max(0, start - EVENT_LOOKBACK_COUNT - 1)
-        if not count:
-            return None
+        if count == 0:
+            return (max(0, start - EVENT_LOOKBACK_COUNT - 1)
+                    if len(self._events) == 0 else None)
 
         try:
             events = self._parser.parse_events(start, event_data, count)
-            for (id, text) in events:
-                LOG.debug(f"[{id}]: {text}")
+            for e in events:
+                LOG.debug(e)
             self._events.extend(events)
-        except Exception as e:
-            error_str = f"parse error: {repr(e)}"
+        except Exception as excp:
+            error_str = f"parse error: {repr(excp)}"
             LOG.error("History event " + error_str)
-            self._events.append((start + count, error_str))
+            self._events.append(HistoryEvent(start + count, error_str))
         return self.last_event_id
 
     def parse_subscription_event(self, raw_event):
@@ -71,26 +74,26 @@ class HistoryParser(object):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
-    def parse_events(self, start, event_data, count):
+    def parse_events(self, start, event_data, count) -> [HistoryEvent]:
         pass
 
 class TextHistory(HistoryParser):
-    def parse_events(self, start, event_data, count):
+    def parse_events(self, start, event_data, count) -> [HistoryEvent]:
         events = []
         for i in range(count):
             line = event_data[:event_data.index(0)].decode()
             date, time, message = re.split(r"\s+", line, 2)
             date = datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
-            events.append((start + i, f"{date} | {message}"))
+            events.append(HistoryEvent(start + i, f"{date} | {message}"))
             event_data = event_data[len(line)+1:]
         return events
 
 class RawHistory(HistoryParser):
-    def parse_events(self, start, event_data, count):
+    def parse_events(self, start, event_data, count) -> [HistoryEvent]:
         events = []
         event_length = len(event_data) // count
         for i in range(count):
-            events.append((start + i, self._parse_event(event_data)))
+            events.append(HistoryEvent(start + i, self._parse_event(event_data)))
             event_data = event_data[event_length:]
         return events
     @abc.abstractmethod

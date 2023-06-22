@@ -23,6 +23,7 @@ asyncio.set_event_loop(loop)
 panel = Panel(host=args.host, port=args.port, passcode=args.passcode)
 try:
     loop.run_until_complete(panel.connect())
+    panel.print()
     loop.run_forever()
 except KeyboardInterrupt:
     loop.run_until_complete(panel.disconnect())

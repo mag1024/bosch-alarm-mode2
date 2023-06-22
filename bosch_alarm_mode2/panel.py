@@ -156,7 +156,7 @@ class Panel:
                     "Panel does not support subscriptions, falling back to polling")
 
     @property
-    def history(self) -> list[HistoryEvent]:
+    def events(self) -> list[HistoryEvent]:
         return self._history.events
 
     async def disconnect(self):
@@ -192,6 +192,9 @@ class Panel:
         if self.points:
             print('Points:')
             print(self.points)
+        if self.events:
+            print('Events:')
+            print(*self.events, sep="\n")
 
     async def _connect(self, load_selector):
         LOG.info('Connecting to %s:%d...', self._host, self._port)
@@ -221,7 +224,7 @@ class Panel:
             self._poll_task = None
 
     async def _load_history(self):
-        start_size = len(self.history)
+        start_size = len(self.events)
         start_t = time.perf_counter()
         event_id = self._history.last_event_id
         while event_id is not None:
@@ -231,9 +234,9 @@ class Panel:
             self._last_msg = datetime.now()
             if (event_id := self._history.parse_polled_events(data)):
                 self.history_observer._notify()
-        if len(self.history) != start_size:
+        if len(self.events) != start_size:
             LOG.debug("Loaded %d history events in %.2fs" % (
-                len(self.history) - start_size, time.perf_counter() - start_t))
+                len(self.events) - start_size, time.perf_counter() - start_t))
 
     async def _monitor_connection(self):
         while True:
@@ -364,7 +367,7 @@ class Panel:
             names[id] = name.decode('ascii')
         return names
 
-    async def _load_authorised_entities(self, config_cmd, type):
+    async def _load_enabled_entities(self, config_cmd, type) -> dict[int, str]:
         data = await self._connection.send_command(config_cmd)
         names = {}
         index = 0
@@ -379,7 +382,7 @@ class Panel:
         return names
 
     async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
-        names = await self._load_authorised_entities(config_cmd, type)
+        names = await self._load_enabled_entities(config_cmd, type)
 
         if self._supports_command_request_area_text_cf03:
             return await self._load_names_cf03(name_cmd, names)
