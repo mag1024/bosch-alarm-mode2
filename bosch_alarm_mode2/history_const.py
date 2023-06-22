@@ -459,6 +459,15 @@ AMAX_HISTORY_FORMAT = {
     "111": "Transmission failed",
 }
 
+SOLUTION_USERS = {
+    0: "Quick",
+    994: "PowerUp",
+    995: "Telephone",
+    997: "Schedule",
+    998: "A-Link",
+    999: "Installer",
+}
+
 SOLUTION_HISTORY_FORMAT = {
     "0": "System Reset",
     "1": "Zone {param1} Alarm",

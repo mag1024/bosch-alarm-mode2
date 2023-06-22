@@ -3,17 +3,21 @@ import logging
 import re
 from datetime import datetime
 from typing import NamedTuple
-from .history_const import B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT, SOLUTION_HISTORY_FORMAT, EVENT_LOOKBACK_COUNT
+from .history_const import (
+        B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT,
+        SOLUTION_HISTORY_FORMAT, SOLUTION_USERS,
+        EVENT_LOOKBACK_COUNT)
 from .utils import BE_INT, LE_INT
 
 LOG = logging.getLogger(__name__)
 
 class HistoryEvent(NamedTuple):
-    event_id: int
-    event: str
+    id: int
+    date: datetime
+    message: str
 
     def __repr__(self):
-        return f"[{self.event_id}] {self.event}"
+        return f"[{self.id}] {self.date} | {self.message}"
 
 class History:
     def __init__(self, events) -> None:
@@ -57,7 +61,7 @@ class History:
         except Exception as excp:
             error_str = f"parse error: {repr(excp)}"
             LOG.error("History event " + error_str)
-            self._events.append(HistoryEvent(start + count, error_str))
+            self._events.append(HistoryEvent(start + count, datetime.now(), error_str))
         return self.last_event_id
 
     def parse_subscription_event(self, raw_event):
@@ -66,11 +70,11 @@ class History:
         line = raw_event[25:total_len - 1].decode()
         # Not sure why, but there is an extra 0 in subscription text
         date, time, _, message = re.split(r"\s+", line, 3)
-        date = datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
-        self._events.append((BE_INT.int16(raw_event, 4), f"{date} | {message}"))
+        date = datetime.strptime(f"{date} {time}", "%m/%d/%Y %I:%M%p")
+        self._events.append((BE_INT.int16(raw_event, 4), date, message))
         return total_len
 
-class HistoryParser(object):
+class HistoryParser:
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
@@ -84,7 +88,7 @@ class TextHistory(HistoryParser):
             line = event_data[:event_data.index(0)].decode()
             date, time, message = re.split(r"\s+", line, 2)
             date = datetime.strptime(f"{date} {time}","%m/%d/%Y %I:%M%p")
-            events.append(HistoryEvent(start + i, f"{date} | {message}"))
+            events.append(HistoryEvent(start + i, date, message))
             event_data = event_data[len(line)+1:]
         return events
 
@@ -93,12 +97,12 @@ class RawHistory(HistoryParser):
         events = []
         event_length = len(event_data) // count
         for i in range(count):
-            events.append(HistoryEvent(start + i, self._parse_event(event_data)))
+            events.append(HistoryEvent(start + i, *self._parse_event(event_data)))
             event_data = event_data[event_length:]
         return events
     @abc.abstractmethod
-    def _parse_event(self, event):
-        return
+    def _parse_event(self, event) -> (datetime, str):
+        pass
 
 class SolutionAmaxHistory(RawHistory):
     def _parse_params(self, event):
@@ -117,36 +121,25 @@ class SolutionAmaxHistory(RawHistory):
         return (event_code, date, first_param, second_param)
 
 class SolutionHistory(SolutionAmaxHistory):
-    SOLUTION_USERS = {
-        0: "Quick",
-        994: "PowerUp",
-        995: "Telephone",
-        997: "Schedule",
-        998: "A-Link",
-        999: "Installer",
-    }
-
     def _parse_event(self, event):
         (event_code, date, first_param, second_param) = self._parse_params(event)
-        date = f"{date} | "
-        event_code = str(event_code)
         user = ""
-        if second_param in SolutionHistory.SOLUTION_USERS:
-            user = SolutionHistory.SOLUTION_USERS[second_param]
+        if second_param in SOLUTION_USERS:
+            user = SOLUTION_USERS[second_param]
         elif second_param <= 32:
             user = f"User {second_param}"
-        return date + SOLUTION_HISTORY_FORMAT[event_code].format(
-            user=user, param1=first_param, param2=second_param)
+        return (date, SOLUTION_HISTORY_FORMAT[str(event_code)].format(
+            user=user, param1=first_param, param2=second_param))
 
 class AmaxHistory(SolutionAmaxHistory):
     def _check_history_key(self, id, date, first_param, second_param):
         if id in AMAX_HISTORY_FORMAT:
-            return date + AMAX_HISTORY_FORMAT[id].format(param1=first_param, param2=second_param)
+            return (date,
+                    AMAX_HISTORY_FORMAT[id].format(param1=first_param, param2=second_param))
         return None
 
     def _parse_event(self, event):
         (event_code, date, first_param, second_param) = self._parse_params(event)
-        date = f"{date} | "
         id = str(event_code)
         # Amax requires different strings depending on param1 sometimes
         check = self._check_history_key(id, date, first_param, second_param)
@@ -188,6 +181,5 @@ class BGHistory(RawHistory):
         param1 = BE_INT.int16(event, 4)
         param2 = BE_INT.int16(event, 6)
         param3 = BE_INT.int16(event, 8)
-        date = f"{date} | "
-        return date + B_G_HISTORY_FORMAT[event_code].format(
-            area=area, param1=param1, param2=param2, param3=param3)
+        return (date, B_G_HISTORY_FORMAT[event_code].format(
+            area=area, param1=param1, param2=param2, param3=param3))
