@@ -314,14 +314,17 @@ class Panel:
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
-        bitmask = data[23:].ljust(33, b'\0')
-        # Solution and AMAX panels use one set of arming types, B series panels use another.
+        # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
+        # Section 13.2 of the protocol spec.
+        bitmask = data[23:].ljust(33, b'\0')
+        if bitmask[0] & 0x10:
+            self._connection.protocol = PROTOCOL.EXTENDED
         self._supports_subscriptions = (bitmask[0] & 0x40) != 0
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0

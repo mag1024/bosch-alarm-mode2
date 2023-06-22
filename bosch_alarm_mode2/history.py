@@ -62,7 +62,9 @@ class History:
             error_str = f"parse error: {repr(excp)}"
             LOG.error("History event " + error_str)
             self._events.append(HistoryEvent(start + count, datetime.now(), error_str))
-        return self.last_event_id
+
+        # count != max supported by the protocol indicates end of events.
+        return self.last_event_id if count in (3, 23) else None
 
     def parse_subscription_event(self, raw_event):
         text_len = BE_INT.int16(raw_event, 23)

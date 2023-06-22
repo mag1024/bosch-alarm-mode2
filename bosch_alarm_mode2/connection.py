@@ -1,13 +1,14 @@
 import asyncio
 import logging
 
-from .const import *
+from .const import ERROR, PROTOCOL
 from .utils import BE_INT
 
 LOG = logging.getLogger(__name__)
 
 class Connection(asyncio.Protocol):
     def __init__(self, passcode, on_status_update, on_disconnect):
+        self.protocol = PROTOCOL.BASIC
         self._passcode = passcode
         self._on_status_update = on_status_update
         self._on_disconnect = on_disconnect
@@ -21,7 +22,6 @@ class Connection(asyncio.Protocol):
     def connection_lost(self, exc):
         LOG.info("Connection terminated.")
         self._on_disconnect()
-        
 
     def data_received(self, data):
         LOG.debug("<< %s", data)
@@ -29,8 +29,9 @@ class Connection(asyncio.Protocol):
         self._consume_buffer()
 
     def send_command(self, code, data = bytearray()) -> asyncio.Future:
-        request = bytearray(b'\x04')  # protocol version
-        request.extend((len(data) + 1).to_bytes(2, 'big'))
+        request = bytearray([self.protocol])
+        length_size = 2 if self.protocol == PROTOCOL.EXTENDED else 1
+        request.extend((len(data) + 1).to_bytes(length_size, 'big'))
         request.append(code)
         request.extend(data)
         response = asyncio.get_running_loop().create_future()
@@ -64,8 +65,8 @@ class Connection(asyncio.Protocol):
             self._buffer = self._buffer[msg_len:]
 
     def _process_response(self, data):
-      response = self._pending.get_nowait()
-      if data[0] == 0xFC: response.set_result(None)
-      elif data[0] == 0xFD: response.set_exception(Exception("NACK: %s" % ERROR[data[1]]))
-      elif data[0] == 0xFE: response.set_result(data[1:])
-      else: response.set_exception(Exception("unexpected response code:", data))
+        response = self._pending.get_nowait()
+        if data[0] == 0xFC: response.set_result(None)
+        elif data[0] == 0xFD: response.set_exception(Exception("NACK: ", ERROR[data[1]]))
+        elif data[0] == 0xFE: response.set_result(data[1:])
+        else: response.set_exception(Exception("unexpected response code:", data))
