@@ -84,6 +84,10 @@ class HistoryParser:
     @abc.abstractmethod
     def parse_events(self, start, event_data, count) -> [HistoryEvent]:
         pass
+    # determines if the given event count indicates end of event history
+    @abc.abstractmethod
+    def count_is_end(self, count) -> bool:
+        pass
 
 class TextHistory(HistoryParser):
     def parse_events(self, start, event_data, count) -> [HistoryEvent]:
@@ -95,6 +99,9 @@ class TextHistory(HistoryParser):
             events.append(HistoryEvent(start + i, date, message))
             event_data = event_data[len(line)+1:]
         return events
+    def count_is_end(self, count) -> bool:
+        # count != max supported by the protocol indicates end of events.
+        return not count in (3, 23)
 
 class RawHistory(HistoryParser):
     def parse_events(self, start, event_data, count) -> [HistoryEvent]:
@@ -104,6 +111,8 @@ class RawHistory(HistoryParser):
             events.append(HistoryEvent(start + i, *self._parse_event(event_data)))
             event_data = event_data[event_length:]
         return events
+    def count_is_end(self, count) -> bool:
+        return count == 0
     @abc.abstractmethod
     def _parse_event(self, event) -> (datetime, str):
         pass
