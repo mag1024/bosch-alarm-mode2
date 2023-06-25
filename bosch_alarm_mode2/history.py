@@ -83,7 +83,7 @@ class History:
         except Exception as excp:
             error_str = f"parse error: {repr(excp)}"
             LOG.error("History event " + error_str)
-            self._events.append(HistoryEvent(event_id, datetime.now(), error_str))
+            self._events.append(HistoryEvent(event_id + 1, datetime.now(), error_str))
         return total_len
 
 class HistoryParser:
@@ -115,7 +115,7 @@ class TextHistory(HistoryParser):
         # Not sure why, but there is an extra 0 in subscription text
         date, time, _, message = re.split(r"\s+", line, 3)
         date = datetime.strptime(f"{date} {time}", "%m/%d/%Y %I:%M%p")
-        return HistoryEvent(BE_INT.int32(raw_event), date, message)
+        return HistoryEvent(BE_INT.int32(raw_event) + 1, date, message)
 
 class RawHistory(HistoryParser):
     def parse_events(self, start, event_data, count) -> [HistoryEvent]:
@@ -139,7 +139,7 @@ class RawHistory(HistoryParser):
         date, time, _ = re.split(r"\s+", line, 2)
         date = datetime.strptime(f"{date} {time}", "%m/%d/%Y %I:%M%p")
         params = HistoryEventParams(date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
-        return HistoryEvent(BE_INT.int32(raw_event), *self._parse_event(params))
+        return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
 
     @abc.abstractmethod
     def _parse_event_params(self, event) -> HistoryEventParams:
