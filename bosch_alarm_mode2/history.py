@@ -126,7 +126,6 @@ class RawHistory(HistoryParser):
             event_data = event_data[event_length:]
         return events
 
-    @abc.abstractmethod
     def parse_subscription_event(self, raw_event) -> HistoryEvent:
         event_code = str(BE_INT.int16(raw_event, 4))
         area = BE_INT.int16(raw_event, 6)
