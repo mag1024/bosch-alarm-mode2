@@ -104,66 +104,48 @@ class RawHistory(HistoryParser):
     def _parse_event(self, event) -> (datetime, str):
         pass
 
-class SolutionAmaxHistory(RawHistory):
-    def _parse_params(self, event):
-        timestamp = LE_INT.int16(event)
-        minute = timestamp & 0x3F
-        hour = (timestamp >> 6) & 0x1F
-        day = (timestamp >> 11) & 0x1F
-        timestamp = LE_INT.int16(event, 2)
-        second = timestamp & 0x3F
-        month = (timestamp >> 6) & 0x0F
-        year = 2000 + (timestamp >> 10)
-        first_param = LE_INT.int16(event, 4)
-        second_param = event[7]
-        event_code = event[6]
-        date = datetime(year, month, day, hour, minute, second)
-        return (event_code, date, first_param, second_param)
+def _parse_sol_amax_params(event):
+    timestamp = LE_INT.int16(event)
+    minute = timestamp & 0x3F
+    hour = (timestamp >> 6) & 0x1F
+    day = (timestamp >> 11) & 0x1F
+    timestamp = LE_INT.int16(event, 2)
+    second = timestamp & 0x3F
+    month = (timestamp >> 6) & 0x0F
+    year = 2000 + (timestamp >> 10)
+    date = datetime(year, month, day, hour, minute, second)
 
-class SolutionHistory(SolutionAmaxHistory):
+    event_code = str(event[6])
+    param1 = LE_INT.int16(event, 4)
+    param2 = event[7]
+    return (event_code, date, param1, param2)
+
+class SolutionHistory(RawHistory):
     def _parse_event(self, event):
-        (event_code, date, first_param, second_param) = self._parse_params(event)
-        user = ""
-        if second_param in SOLUTION_USERS:
-            user = SOLUTION_USERS[second_param]
-        elif second_param <= 32:
-            user = f"User {second_param}"
-        return (date, SOLUTION_HISTORY_FORMAT[str(event_code)].format(
-            user=user, param1=first_param, param2=second_param))
+        (event_code, date, param1, param2) = _parse_sol_amax_params(event)
+        user = SOLUTION_USERS.get(param2, f"User {param2}" if param2 <= 32 else "")
+        return (date, SOLUTION_HISTORY_FORMAT[event_code].format(
+            user=user, param1=param1, param2=param2))
 
-class AmaxHistory(SolutionAmaxHistory):
-    def _check_history_key(self, id, date, first_param, second_param):
-        if id in AMAX_HISTORY_FORMAT:
-            return (date,
-                    AMAX_HISTORY_FORMAT[id].format(param1=first_param, param2=second_param))
-        return None
-
+class AmaxHistory(RawHistory):
     def _parse_event(self, event):
-        (event_code, date, first_param, second_param) = self._parse_params(event)
-        id = str(event_code)
+        (event_code, date, param1, param2) = _parse_sol_amax_params(event)
         # Amax requires different strings depending on param1 sometimes
-        check = self._check_history_key(id, date, first_param, second_param)
-        if check:
-            return check
-        check = self._check_history_key(f"{id}_{first_param}", date, first_param, second_param)
-        if check:
-            return check
-        check = self._check_history_key(f"{id}_zone", date, first_param, second_param)
-        if check:
-            return check
-        check = self._check_history_key(f"{id}_keypad", date, first_param, second_param)
-        if check and first_param <= 16:
-            return check
-        check = self._check_history_key(f"{id}_dx2", date, first_param, second_param)
-        if check and first_param <= 108:
-            return check
-        check = self._check_history_key(f"{id}_dx3", date, first_param, second_param)
-        if check and first_param in (150, 151):
-            return check
-        check = self._check_history_key(f"{id}_b4", date, first_param, second_param)
-        if check and first_param in (150, 151):
-            return check
-        return "Unknown event"
+        key_specs = [
+            ("", None),
+            ("_%d" % param1, None),
+            ("_zone", None),
+            ("_keypad", lambda p: p <= 16),
+            ("_dx2", lambda p: p <= 108),
+            ("_dx3", lambda p: p in (150, 151)),
+            ("_b4", lambda p: p in (150, 151)),
+        ]
+        for (suffix, predicate) in key_specs:
+            if predicate and not predicate(param1):
+                continue
+            if template := AMAX_HISTORY_FORMAT.get(event_code + suffix):
+                return (date, template.format(param1=param1, param2=param2))
+        return (date, f"Unknown event id={event_code} p1={param1} p2={param2}")
 
 class BGHistory(RawHistory):
     def _parse_event(self, event):
