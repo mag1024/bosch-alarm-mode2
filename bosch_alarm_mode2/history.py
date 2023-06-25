@@ -74,7 +74,7 @@ class History:
 
     def parse_subscription_event(self, raw_event):
         text_len = BE_INT.int16(raw_event, 23)
-        event_id = BE_INT.int16(raw_event, 4)
+        event_id = BE_INT.int32(raw_event)
         total_len = 25 + text_len
         try:
             e = self._parser.parse_subscription_event(raw_event)
@@ -115,7 +115,7 @@ class TextHistory(HistoryParser):
         # Not sure why, but there is an extra 0 in subscription text
         date, time, _, message = re.split(r"\s+", line, 3)
         date = datetime.strptime(f"{date} {time}", "%m/%d/%Y %I:%M%p")
-        return HistoryEvent(BE_INT.int16(raw_event, 4), date, message)
+        return HistoryEvent(BE_INT.int32(raw_event), date, message)
 
 class RawHistory(HistoryParser):
     def parse_events(self, start, event_data, count) -> [HistoryEvent]:
@@ -139,7 +139,7 @@ class RawHistory(HistoryParser):
         date, time, _ = re.split(r"\s+", line, 2)
         date = datetime.strptime(f"{date} {time}", "%m/%d/%Y %I:%M%p")
         params = HistoryEventParams(date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
-        return HistoryEvent(BE_INT.int16(raw_event, 4), *self._parse_event(params))
+        return HistoryEvent(BE_INT.int32(raw_event), *self._parse_event(params))
 
     @abc.abstractmethod
     def _parse_event_params(self, event) -> HistoryEventParams:
