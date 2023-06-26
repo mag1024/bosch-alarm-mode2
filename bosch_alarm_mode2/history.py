@@ -21,7 +21,7 @@ class HistoryEvent(NamedTuple):
 
 class HistoryEventParams(NamedTuple):
     date: datetime
-    event_code: int
+    event_code: str
     area: int
     param1: int
     param2: int
@@ -73,19 +73,19 @@ class History:
         return self.last_event_id
 
     def parse_subscription_event(self, raw_event):
-        text_len = BE_INT.int16(raw_event, 23)
-        event_id = BE_INT.int32(raw_event)
-        total_len = 25 + text_len
         try:
+            text_len = BE_INT.int16(raw_event, 23)
+            event_id = BE_INT.int32(raw_event)
+            total_len = 25 + text_len
             e = self._parser.parse_subscription_event(raw_event)
             LOG.debug(e)
             self._events.append(e)
+            return total_len
         except Exception as excp:
             error_str = f"parse error: {repr(excp)}"
             LOG.error("History event " + error_str)
             self._events.append(HistoryEvent(event_id + 1, datetime.now(), error_str))
-        return total_len
-
+            return len(raw_event)
 class HistoryParser:
     __metaclass__ = abc.ABCMeta
 
