@@ -31,6 +31,7 @@ class History:
     def __init__(self, events) -> None:
         self._events = events
         self._parser = TextHistory()
+        self._max_count = 0
 
     @property
     def events(self):
@@ -73,7 +74,10 @@ class History:
             self._events.extend(events)
         except Exception as excp:
             self._append_error(start + count, excp)
-        return self.last_event_id
+
+        if count > self._max_count: self._max_count = count
+        # A truncated batch indicates the end of events.
+        return self.last_event_id if count == self._max_count else None
 
     def parse_subscription_event(self, raw_event):
         try:

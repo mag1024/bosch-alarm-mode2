@@ -162,3 +162,6 @@ class CMD:
     # Diagnostic group
     PRODUCT_SERIAL = 0x4A
 
+class PROTOCOL:
+    BASIC = 0x01
+    EXTENDED = 0x04
