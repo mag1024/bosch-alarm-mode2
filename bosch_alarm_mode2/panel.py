@@ -208,6 +208,7 @@ class Panel:
         self._last_msg = datetime.now()
         self._connection = connection
         await self._authenticate()
+        LOG.debug("Authentication success!")
         await self.load(load_selector)
         self.connection_status_observer._notify()
 
@@ -286,20 +287,22 @@ class Panel:
         creds.extend(map(ord, self._passcode))
         creds.append(0x00) # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
-        if result != b'\x01':
-            if self._passcode.isnumeric():
-                LOG.info("Authentication failed, trying remote user")
-                try:
-                    await self._login_remote_user()
-                    LOG.debug("Authentication success!")
-                    return
-                except Exception:
-                    pass
-            self._connection.close()
-            error = ["Not Authorized", "Authorized",
-                    "Max Connections"][result[0]]
-            raise PermissionError("Authentication failed: " + error)
-        LOG.debug("Authentication success!")
+        if result and result[0] == 0x01:
+            return
+
+        # Fallback on user authentication
+        if self._passcode.isnumeric():
+            LOG.info("Authentication failed, trying remote user")
+            try:
+                await self._login_remote_user()
+                return
+            except Exception:
+                pass
+
+        self._connection.close()
+        error = ["Not Authorized", "Authorized",
+                "Max Connections"][result[0] if result else 0]
+        raise PermissionError("Authentication failed: " + error)
 
     async def _basicinfo(self):
         try:
@@ -311,14 +314,17 @@ class Panel:
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
-        bitmask = data[23:].ljust(33, b'\0')
-        # Solution and AMAX panels use one set of arming types, B series panels use another.
+        # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
+        # Section 13.2 of the protocol spec.
+        bitmask = data[23:].ljust(33, b'\0')
+        if bitmask[0] & 0x10:
+            self._connection.protocol = PROTOCOL.EXTENDED
         self._supports_subscriptions = (bitmask[0] & 0x40) != 0
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
