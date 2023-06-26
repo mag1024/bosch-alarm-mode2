@@ -50,6 +50,11 @@ class History:
             self._parser = AmaxHistory()
         else:
             self._parser = BGHistory()
+    
+    def _append_error(self, id, excp):
+        error_str = f"parse error: {repr(excp)}"
+        LOG.error("History event " + error_str)
+        self._events.append(HistoryEvent(id, datetime.now(), error_str))
 
     def parse_polled_events(self, event_data):
         count = event_data[0]
@@ -67,9 +72,7 @@ class History:
                 LOG.debug(e)
             self._events.extend(events)
         except Exception as excp:
-            error_str = f"parse error: {repr(excp)}"
-            LOG.error("History event " + error_str)
-            self._events.append(HistoryEvent(start + count, datetime.now(), error_str))
+            self._append_error(start + count, excp)
         return self.last_event_id
 
     def parse_subscription_event(self, raw_event):
@@ -82,9 +85,7 @@ class History:
             self._events.append(e)
             return total_len
         except Exception as excp:
-            error_str = f"parse error: {repr(excp)}"
-            LOG.error("History event " + error_str)
-            self._events.append(HistoryEvent(event_id + 1, datetime.now(), error_str))
+            self._append_error(event_id + 1, excp)
             return len(raw_event)
 class HistoryParser:
     __metaclass__ = abc.ABCMeta
