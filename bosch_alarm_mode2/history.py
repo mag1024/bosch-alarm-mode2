@@ -117,10 +117,15 @@ class TextHistory(HistoryParser):
         text_len = BE_INT.int16(raw_event, 23)
         total_len = 25 + text_len
         line = raw_event[25:total_len - 1].decode()
-        # Not sure why, but there is an extra 0 in subscription text
-        date, time, _, message = re.split(r"\s+", line, 3)
-        date = datetime.strptime(f"{date} {time}", "%m/%d/%Y %I:%M%p")
-        return HistoryEvent(BE_INT.int32(raw_event) + 1, date, message)
+        timestamp = BE_INT.int32(raw_event, 14)
+        minute = timestamp & 0x3F
+        hour = (timestamp >> 6) & 0x1F
+        day = (timestamp >> 11) & 0x1F
+        month = (timestamp >> 16) & 0x0F
+        year = 2000 + ((timestamp >> 20) & 0x1F)
+        second = (timestamp >> 26)
+        date = datetime(year, month, day, hour, minute, second)
+        return HistoryEvent(BE_INT.int32(raw_event) + 1, date, line)
 
 class RawHistory(HistoryParser):
     def parse_events(self, start, event_data, count) -> [HistoryEvent]:
@@ -137,11 +142,14 @@ class RawHistory(HistoryParser):
         param1 = BE_INT.int16(raw_event, 8)
         param2 = BE_INT.int16(raw_event, 10)
         param3 = BE_INT.int16(raw_event, 12)
-        text_len = BE_INT.int16(raw_event, 23)
-        total_len = 25 + text_len
-        line = raw_event[25:total_len - 1].decode()
-        date, time, _ = re.split(r"\s+", line, 2)
-        date = datetime.strptime(f"{date} {time}", "%m/%d/%Y %I:%M%p")
+        timestamp = BE_INT.int32(raw_event, 14)
+        minute = timestamp & 0x3F
+        hour = (timestamp >> 6) & 0x1F
+        day = (timestamp >> 11) & 0x1F
+        month = (timestamp >> 16) & 0x0F
+        year = 2000 + ((timestamp >> 20) & 0x1F)
+        second = (timestamp >> 26)
+        date = datetime(year, month, day, hour, minute, second)
         params = HistoryEventParams(date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
         return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
 
