@@ -328,13 +328,11 @@ class Panel:
         self._supports_subscriptions = (bitmask[0] & 0x40) != 0
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
-        supports_history_text = (bitmask[5] & 0x80) != 0
         supports_history_raw_ext = (bitmask[16] & 0x02) != 0
-        if not supports_history_text:
-            self._history.init_raw_history(data[0])
-            self._history_cmd = (
-                    CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_history_raw_ext else
-                    CMD.REQUEST_RAW_HISTORY_EVENTS)
+        self._history.init_raw_history(data[0])
+        self._history_cmd = (
+                CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_history_raw_ext else
+                CMD.REQUEST_RAW_HISTORY_EVENTS)
         supports_serial_read = (bitmask[13] & 0x04) != 0
         if supports_serial_read:
             data = await self._connection.send_command(
