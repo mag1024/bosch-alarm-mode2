@@ -121,7 +121,7 @@ class HistoryParser:
         pass
     @abc.abstractmethod
     def _parse_event(self, date, event_code, param1, param2, param3) -> (datetime, str):
-        pass    
+        pass
 
 def _parse_sol_amax_params(event):
     timestamp = LE_INT.int16(event)
