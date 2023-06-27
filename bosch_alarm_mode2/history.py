@@ -94,15 +94,6 @@ class History:
 class HistoryParser:
     __metaclass__ = abc.ABCMeta
 
-    @abc.abstractmethod
-    def parse_events(self, start, event_data, count) -> [HistoryEvent]:
-        pass
-    
-    @abc.abstractmethod
-    def parse_subscription_event(self, raw_event) -> HistoryEvent:
-        pass
-
-class RawHistory(HistoryParser):
     def parse_events(self, start, event_data, count) -> [HistoryEvent]:
         events = []
         event_length = len(event_data) // count
@@ -110,13 +101,27 @@ class RawHistory(HistoryParser):
             events.append(HistoryEvent(start + i, *self._parse_event(self._parse_event_params(event_data))))
             event_data = event_data[event_length:]
         return events
+    
+    def parse_subscription_event(self, raw_event) -> HistoryEvent:
+        event_code = str(BE_INT.int16(raw_event, 4))
+        area = BE_INT.int16(raw_event, 6)
+        param1 = BE_INT.int16(raw_event, 8)
+        param2 = BE_INT.int16(raw_event, 10)
+        param3 = BE_INT.int16(raw_event, 12)
+        timestamp = BE_INT.int32(raw_event, 14)
+        params = HistoryEventParams(date=self._parse_subscription_event_timestamp(timestamp), event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
+        return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
+
+    @abc.abstractmethod
+    def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
+        pass
 
     @abc.abstractmethod
     def _parse_event_params(self, event) -> HistoryEventParams:
         pass
     @abc.abstractmethod
     def _parse_event(self, date, event_code, param1, param2, param3) -> (datetime, str):
-        pass
+        pass    
 
 def _parse_sol_amax_params(event):
     timestamp = LE_INT.int16(event)
@@ -134,7 +139,16 @@ def _parse_sol_amax_params(event):
     param2 = event[7]
     return HistoryEventParams(date=date, event_code=event_code, area=param1, param1=param1, param2=param2, param3=0)
 
-class SolutionHistory(RawHistory):
+def _parse_sol_amax_timestamp(timestamp):
+    minute = timestamp & 0x3F
+    hour = (timestamp >> 6) & 0x1F
+    day = (timestamp >> 11) & 0x1F
+    month = (timestamp >> 16) & 0x0F
+    year = 2000 + ((timestamp >> 20) & 0x1F)
+    second = (timestamp >> 26)
+    return datetime(year, month, day, hour, minute, second)
+
+class SolutionHistory(HistoryParser):
     def _parse_event_params(self, event) -> HistoryEventParams:
         return _parse_sol_amax_params(event) 
     
@@ -143,29 +157,15 @@ class SolutionHistory(RawHistory):
         return (event.date, SOLUTION_HISTORY_FORMAT[event.event_code].format(
             user=user, param1=event.param1, param2=event.param2))
 
-    def parse_subscription_event(self, raw_event) -> HistoryEvent:
-        event_code = str(BE_INT.int16(raw_event, 4))
-        area = BE_INT.int16(raw_event, 6)
-        param1 = BE_INT.int16(raw_event, 8)
-        param2 = BE_INT.int16(raw_event, 10)
-        param3 = BE_INT.int16(raw_event, 12)
-        timestamp = BE_INT.int32(raw_event, 14)
-        minute = timestamp & 0x3F
-        hour = (timestamp >> 6) & 0x1F
-        day = (timestamp >> 11) & 0x1F
-        month = (timestamp >> 16) & 0x0F
-        year = 2000 + ((timestamp >> 20) & 0x1F)
-        second = (timestamp >> 26)
-        date = datetime(year, month, day, hour, minute, second)
-        params = HistoryEventParams(date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
-        return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
+    def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
+        return _parse_sol_amax_timestamp(timestamp)
 
-class AmaxHistory(RawHistory):
+class AmaxHistory(HistoryParser):
     def _parse_event_params(self, event) -> HistoryEventParams:
         return _parse_sol_amax_params(event)
-    
-    def parse_subscription_event(self, raw_event) -> HistoryEvent:
-        return HistoryEvent(BE_INT.int32(raw_event) + 1, datetime.now(), "AMAX History Subscription Unsupported")
+
+    def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
+        return _parse_sol_amax_timestamp(timestamp)
     
     def _parse_event(self, event: HistoryEventParams):
         # Amax requires different strings depending on param1 sometimes
@@ -185,7 +185,7 @@ class AmaxHistory(RawHistory):
                 return (event.date, template.format(param1=event.param1, param2=event.param2))
         return (event.date, f"Unknown event id={event.event_code} p1={event.param1} p2={event.param2}")
 
-class BGHistory(RawHistory):
+class BGHistory(HistoryParser):
     def _parse_event_params(self, event) -> HistoryEventParams:
         timestamp = BE_INT.int32(event, 10)
         year = 2010 + (timestamp >> 26)
@@ -203,24 +203,14 @@ class BGHistory(RawHistory):
         param3 = BE_INT.int16(event, 8)
         return HistoryEventParams(date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
 
-
-
-    def parse_subscription_event(self, raw_event) -> HistoryEvent:
-        event_code = str(BE_INT.int16(raw_event, 4))
-        area = BE_INT.int16(raw_event, 6)
-        param1 = BE_INT.int16(raw_event, 8)
-        param2 = BE_INT.int16(raw_event, 10)
-        param3 = BE_INT.int16(raw_event, 12)
-        timestamp = BE_INT.int32(raw_event, 14)
+    def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
         minute = timestamp & 0x3F
         hour = (timestamp >> 6) & 0x1F
         day = ((timestamp >> 11) & 0x1F) + 1
         month = ((timestamp >> 16) & 0x0F) + 1
         year = 2010 + ((timestamp >> 20) & 0x1F)
         second = (timestamp >> 26)
-        date = datetime(year, month, day, hour, minute, second)
-        params = HistoryEventParams(date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
-        return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
+        return datetime(year, month, day, hour, minute, second)
 
     def _parse_event(self, event: HistoryEventParams):
         return (event.date, B_G_HISTORY_FORMAT[event.event_code].format(
