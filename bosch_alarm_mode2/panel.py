@@ -102,7 +102,7 @@ class Point(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, passcode, previous_history_events = []):
+    def __init__(self, host, port, passcode):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
@@ -117,7 +117,7 @@ class Panel:
         self.model = None
         self.protocol_version = None
         self.serial_number = None
-        self._history = History(previous_history_events)
+        self._history = History()
         self._history_cmd = CMD.REQUEST_TEXT_HISTORY_EVENTS
         self.areas = {}
         self.points = {}

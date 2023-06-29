@@ -31,8 +31,8 @@ class HistoryEventParams(NamedTuple):
 
 
 class History:
-    def __init__(self, events) -> None:
-        self._events = events
+    def __init__(self) -> None:
+        self._events = []
         self._parser = None
         self._max_count = 0
 
