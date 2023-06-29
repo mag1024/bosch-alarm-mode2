@@ -329,7 +329,7 @@ class Panel:
         self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
         self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
         supports_history_raw_ext = (bitmask[16] & 0x02) != 0
-        self._history.init_raw_history(data[0])
+        self._history.init_for_panel(data[0])
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_history_raw_ext else
                 CMD.REQUEST_RAW_HISTORY_EVENTS)

@@ -47,13 +47,13 @@ class History:
         # allowing us to discover the max existing event id.
         return self._events[-1][0] if self._events else 0xFFFFFFFF
 
-    def init_raw_history(self, panel_type):
+    def init_for_panel(self, panel_type):
         if panel_type <= 0x21:
-            self._parser = SolutionHistory()
+            self._parser = SolutionHistoryParser()
         elif panel_type <= 0x24:
-            self._parser = AmaxHistory()
+            self._parser = AmaxHistoryParser()
         else:
-            self._parser = BGHistory()
+            self._parser = BGHistoryParser()
 
     def _append_error(self, id, excp):
         error_str = f"parse error: {repr(excp)}"
@@ -70,13 +70,16 @@ class History:
             return (max(0, start - EVENT_LOOKBACK_COUNT - 1)
                     if len(self._events) == 0 else None)
 
-        try:
-            events = self._parser.parse_events(start, event_data, count)
-            for e in events:
+        event_length = len(event_data) // count
+        for i in range(start, start + count):
+            try:
+                e = self._parser.parse_raw_event(i, event_data)
                 LOG.debug(e)
-            self._events.extend(events)
-        except Exception as excp:
-            self._append_error(start + count, excp)
+                self._events.append(e)
+                event_data = event_data[event_length:]
+            except Exception as excp:
+                self._append_error(i, excp)
+
 
         if count > self._max_count:
             self._max_count = count
@@ -100,15 +103,6 @@ class History:
 class HistoryParser:
     __metaclass__ = abc.ABCMeta
 
-    def parse_events(self, start, event_data, count) -> [HistoryEvent]:
-        events = []
-        event_length = len(event_data) // count
-        for i in range(count):
-            events.append(HistoryEvent(
-                start + i, *self._parse_event(self._parse_event_params(event_data))))
-            event_data = event_data[event_length:]
-        return events
-
     def parse_subscription_event(self, raw_event) -> HistoryEvent:
         event_code = str(BE_INT.int16(raw_event, 4))
         area = BE_INT.int16(raw_event, 6)
@@ -116,9 +110,13 @@ class HistoryParser:
         param2 = BE_INT.int16(raw_event, 10)
         param3 = BE_INT.int16(raw_event, 12)
         timestamp = BE_INT.int32(raw_event, 14)
-        params = HistoryEventParams(date=self._parse_subscription_event_timestamp(
-            timestamp), event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
+        date = self._parse_subscription_event_timestamp(timestamp)
+        params = HistoryEventParams(
+            date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
         return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
+
+    def parse_raw_event(self, id, event_data):
+        return HistoryEvent(id, *self.parse_raw_event(self._parse_event_params(event_data)))
 
     @abc.abstractmethod
     def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
@@ -160,7 +158,7 @@ def _parse_sol_amax_timestamp(timestamp):
     return datetime(year, month, day, hour, minute, second)
 
 
-class SolutionHistory(HistoryParser):
+class SolutionHistoryParser(HistoryParser):
     def _parse_event_params(self, event) -> HistoryEventParams:
         return _parse_sol_amax_params(event)
 
@@ -174,7 +172,7 @@ class SolutionHistory(HistoryParser):
         return _parse_sol_amax_timestamp(timestamp)
 
 
-class AmaxHistory(HistoryParser):
+class AmaxHistoryParser(HistoryParser):
     def _parse_event_params(self, event) -> HistoryEventParams:
         return _parse_sol_amax_params(event)
 
@@ -200,7 +198,7 @@ class AmaxHistory(HistoryParser):
         return (event.date, f"Unknown event id={event.event_code} p1={event.param1} p2={event.param2}")
 
 
-class BGHistory(HistoryParser):
+class BGHistoryParser(HistoryParser):
     def _parse_event_params(self, event) -> HistoryEventParams:
         timestamp = BE_INT.int32(event, 10)
         year = 2010 + (timestamp >> 26)
