@@ -73,7 +73,7 @@ class History:
         event_length = len(event_data) // count
         for i in range(start, start + count):
             try:
-                e = self._parser.parse_raw_event(i, event_data)
+                e = self._parser.parse_polled_event(i, event_data)
                 LOG.debug(e)
                 self._events.append(e)
                 event_data = event_data[event_length:]
@@ -115,7 +115,7 @@ class HistoryParser:
             date=date, event_code=event_code, area=area, param1=param1, param2=param2, param3=param3)
         return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
 
-    def parse_raw_event(self, id, event_data):
+    def parse_polled_event(self, id, event_data):
         return HistoryEvent(id, *self._parse_event(self._parse_event_params(event_data)))
 
     @abc.abstractmethod
