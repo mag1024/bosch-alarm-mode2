@@ -116,7 +116,7 @@ class HistoryParser:
         return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
 
     def parse_raw_event(self, id, event_data):
-        return HistoryEvent(id, *self.parse_raw_event(self._parse_event_params(event_data)))
+        return HistoryEvent(id, *self._parse_event(self._parse_event_params(event_data)))
 
     @abc.abstractmethod
     def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
