@@ -111,6 +111,7 @@ class Panel:
         self.connection_status_observer = Observable()
         self.history_observer = Observable()
         self._connection = None
+        self._monitor_connection_task = None
         self._last_msg = None
         self._poll_task = None
 
@@ -118,7 +119,7 @@ class Panel:
         self.protocol_version = None
         self.serial_number = None
         self._history = History()
-        self._history_cmd = CMD.REQUEST_TEXT_HISTORY_EVENTS
+        self._history_cmd = None
         self.areas = {}
         self.points = {}
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
@@ -180,7 +181,7 @@ class Panel:
         await self._area_arm(area_id, self._all_arming_id)
 
     def connection_status(self) -> bool:
-        return self._connection != None and self.points and self.areas
+        return self._connection is not None and self.points and self.areas
 
     def print(self):
         if self.model: print('Model:', self.model)
@@ -200,7 +201,7 @@ class Panel:
         LOG.info('Connecting to %s:%d...', self._host, self._port)
         def connection_factory(): return Connection(
                 self._passcode, self._on_status_update, self._on_disconnect)
-        transport, connection = await asyncio.wait_for(
+        _, connection = await asyncio.wait_for(
                 asyncio.get_running_loop().create_connection(
                     connection_factory,
                     host=self._host, port=self._port, ssl=ssl_context),
@@ -325,16 +326,14 @@ class Panel:
         bitmask = data[23:].ljust(33, b'\0')
         if bitmask[0] & 0x10:
             self._connection.protocol = PROTOCOL.EXTENDED
-        self._supports_subscriptions = (bitmask[0] & 0x40) != 0
-        self._supports_command_request_area_text_cf01 = (bitmask[7] & 0x20) != 0
-        self._supports_command_request_area_text_cf03 = (bitmask[7] & 0x08) != 0
-        supports_history_raw_ext = (bitmask[16] & 0x02) != 0
+        self._supports_subscriptions = bitmask[0] & 0x40
+        self._supports_command_request_area_text_cf01 = bitmask[7] & 0x20
+        self._supports_command_request_area_text_cf03 = bitmask[7] & 0x08
         self._history.init_for_panel(data[0])
         self._history_cmd = (
-                CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if supports_history_raw_ext else
+                CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
                 CMD.REQUEST_RAW_HISTORY_EVENTS)
-        supports_serial_read = (bitmask[13] & 0x04) != 0
-        if supports_serial_read:
+        if bitmask[13] & 0x04:  # supports serial read
             data = await self._connection.send_command(
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
@@ -514,4 +513,4 @@ class Panel:
             pos += 2
             self._last_msg = datetime.now()
             consumer = CONSUMERS[update_type]
-            for i in range(0, n_updates): pos += consumer(data[pos:])
+            for _ in range(0, n_updates): pos += consumer(data[pos:])
