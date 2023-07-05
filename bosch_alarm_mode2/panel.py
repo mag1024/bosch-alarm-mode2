@@ -322,6 +322,11 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
+            # This command fails when used with the wrong type of passcode
+            try:
+                await self._connection.send_command(CMD.REQUEST_CONFIGURED_AREAS)
+            except:
+                raise Exception("Incorrect code used - Solution and AMAX series panels require the RSC+ passcode, not the automation passcode.")
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
