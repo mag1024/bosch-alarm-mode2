@@ -226,19 +226,22 @@ class Panel:
             self._poll_task = None
 
     async def _load_history(self):
-        start_size = len(self.events)
-        start_t = time.perf_counter()
-        event_id = self._history.last_event_id
-        while event_id is not None:
-            request = bytearray(b'\xFF')
-            request.extend(event_id.to_bytes(4, 'big'))
-            data = await self._connection.send_command(self._history_cmd, request)
-            self._last_msg = datetime.now()
-            if (event_id := self._history.parse_polled_events(data)):
-                self.history_observer._notify()
-        if len(self.events) != start_size:
-            LOG.debug("Loaded %d history events in %.2fs" % (
-                len(self.events) - start_size, time.perf_counter() - start_t))
+        try:
+            start_size = len(self.events)
+            start_t = time.perf_counter()
+            event_id = self._history.last_event_id
+            while event_id is not None:
+                request = bytearray(b'\xFF')
+                request.extend(event_id.to_bytes(4, 'big'))
+                data = await self._connection.send_command(self._history_cmd, request)
+                self._last_msg = datetime.now()
+                if (event_id := self._history.parse_polled_events(data)):
+                    self.history_observer._notify()
+            if len(self.events) != start_size:
+                LOG.debug("Loaded %d history events in %.2fs" % (
+                    len(self.events) - start_size, time.perf_counter() - start_t))
+        except Exception:
+            LOG.exception("Unable to load history events")
 
     async def _monitor_connection(self):
         while True:
