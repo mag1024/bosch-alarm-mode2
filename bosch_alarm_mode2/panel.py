@@ -69,9 +69,10 @@ class Area(PanelEntity):
         return self.status in AREA_STATUS.PART_ARMED
     def is_all_armed(self):
         return self.status in AREA_STATUS.ALL_ARMED
+    def is_armed(self):
+        return self.status in AREA_STATUS.ARMED
     def is_triggered(self):
-        return (self.status in AREA_STATUS.ARMED and
-            self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS))
+        return self.is_armed() and self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
 
     def reset(self):
         self.status = AREA_STATUS.UNKNOWN
@@ -226,22 +227,22 @@ class Panel:
             self._poll_task = None
 
     async def _load_history(self):
-        try:
-            start_size = len(self.events)
-            start_t = time.perf_counter()
-            event_id = self._history.last_event_id
-            while event_id is not None:
-                request = bytearray(b'\xFF')
-                request.extend(event_id.to_bytes(4, 'big'))
-                data = await self._connection.send_command(self._history_cmd, request)
-                self._last_msg = datetime.now()
-                if (event_id := self._history.parse_polled_events(data)):
-                    self.history_observer._notify()
-            if len(self.events) != start_size:
-                LOG.debug("Loaded %d history events in %.2fs" % (
-                    len(self.events) - start_size, time.perf_counter() - start_t))
-        except Exception:
-            LOG.exception("Unable to load history events")
+        # Don't retrieve history when armed, as panels do not support this.
+        if any(area.is_armed() for area in self.areas):
+            return
+        start_size = len(self.events)
+        start_t = time.perf_counter()
+        event_id = self._history.last_event_id
+        while event_id is not None:
+            request = bytearray(b'\xFF')
+            request.extend(event_id.to_bytes(4, 'big'))
+            data = await self._connection.send_command(self._history_cmd, request)
+            self._last_msg = datetime.now()
+            if (event_id := self._history.parse_polled_events(data)):
+                self.history_observer._notify()
+        if len(self.events) != start_size:
+            LOG.debug("Loaded %d history events in %.2fs" % (
+                len(self.events) - start_size, time.perf_counter() - start_t))
 
     async def _monitor_connection(self):
         while True:
@@ -465,6 +466,9 @@ class Panel:
         area_id = BE_INT.int16(data)
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
+        # Retrieve panel history, as it is possible that a panel may have been armed during 
+        # initialisation, and history can not be retrived when a panel is armed.
+        asyncio.create_task(self._load_history())
         return 3
 
     def _area_ready_consumer(self, data) -> int:
