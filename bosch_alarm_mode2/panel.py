@@ -72,8 +72,7 @@ class Area(PanelEntity):
     def is_armed(self):
         return self.status in AREA_STATUS.ARMED
     def is_triggered(self):
-        return (self.status in AREA_STATUS.ARMED and
-            self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS))
+        return self.is_armed() and self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
 
     def reset(self):
         self.status = AREA_STATUS.UNKNOWN
@@ -467,8 +466,9 @@ class Panel:
         area_id = BE_INT.int16(data)
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
-        if area_status==AREA_STATUS.DISARMED:
-            asyncio.create_task(self._load_history())
+        # Retrieve panel history, as it is possible that a panel may have been armed during 
+        # initialisation, and history can not be retrived when a panel is armed.
+        asyncio.create_task(self._load_history())
         return 3
 
     def _area_ready_consumer(self, data) -> int:
