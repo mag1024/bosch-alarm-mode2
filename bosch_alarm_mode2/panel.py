@@ -467,6 +467,8 @@ class Panel:
         area_id = BE_INT.int16(data)
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
+        if area_status==AREA_STATUS.DISARMED:
+            asyncio.create_task(self._load_history())
         return 3
 
     def _area_ready_consumer(self, data) -> int:
