@@ -69,6 +69,8 @@ class Area(PanelEntity):
         return self.status in AREA_STATUS.PART_ARMED
     def is_all_armed(self):
         return self.status in AREA_STATUS.ALL_ARMED
+    def is_armed(self):
+        return self.status in AREA_STATUS.ARMED
     def is_triggered(self):
         return (self.status in AREA_STATUS.ARMED and
             self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS))
@@ -226,22 +228,22 @@ class Panel:
             self._poll_task = None
 
     async def _load_history(self):
-        try:
-            start_size = len(self.events)
-            start_t = time.perf_counter()
-            event_id = self._history.last_event_id
-            while event_id is not None:
-                request = bytearray(b'\xFF')
-                request.extend(event_id.to_bytes(4, 'big'))
-                data = await self._connection.send_command(self._history_cmd, request)
-                self._last_msg = datetime.now()
-                if (event_id := self._history.parse_polled_events(data)):
-                    self.history_observer._notify()
-            if len(self.events) != start_size:
-                LOG.debug("Loaded %d history events in %.2fs" % (
-                    len(self.events) - start_size, time.perf_counter() - start_t))
-        except Exception:
-            LOG.exception("Unable to load history events")
+        # Don't retrieve history when armed, as panels do not support this.
+        if any(area.is_armed() for area in self.areas):
+            return
+        start_size = len(self.events)
+        start_t = time.perf_counter()
+        event_id = self._history.last_event_id
+        while event_id is not None:
+            request = bytearray(b'\xFF')
+            request.extend(event_id.to_bytes(4, 'big'))
+            data = await self._connection.send_command(self._history_cmd, request)
+            self._last_msg = datetime.now()
+            if (event_id := self._history.parse_polled_events(data)):
+                self.history_observer._notify()
+        if len(self.events) != start_size:
+            LOG.debug("Loaded %d history events in %.2fs" % (
+                len(self.events) - start_size, time.perf_counter() - start_t))
 
     async def _monitor_connection(self):
         while True:
