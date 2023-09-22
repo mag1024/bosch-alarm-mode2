@@ -228,7 +228,7 @@ class Panel:
 
     async def _load_history(self):
         # Don't retrieve history when armed, as panels do not support this.
-        if any(area.is_armed() for area in self.areas):
+        if any(area.is_armed() for area in self.areas.values()):
             return
         start_size = len(self.events)
         start_t = time.perf_counter()
