@@ -308,7 +308,7 @@ class Panel:
     async def _authenticate(self):
         if self._is_solution_or_amax:
             if not self._passcode.isnumeric():
-                raise PermissionError("Solution panels require a user code. This should only contain digits.")
+                raise PermissionError("Solution panels require a user code. This should only contain numerical digits.")
             await self._authenticate_remote_user()
         else:
             await self._authenticate_automation_user()
