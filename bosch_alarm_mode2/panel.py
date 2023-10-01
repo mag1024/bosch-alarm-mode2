@@ -205,10 +205,12 @@ class Panel:
     async def set_output_active(self, output_id):
         request = bytearray([output_id, OUTPUT_STATUS.ACTIVE])
         await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+        self.outputs[output_id].status = OUTPUT_STATUS.ACTIVE
 
     async def set_output_inactive(self, output_id):
         request = bytearray([output_id, OUTPUT_STATUS.INACTIVE])
         await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+        self.outputs[output_id].status = OUTPUT_STATUS.INACTIVE
 
     def connection_status(self) -> bool:
         return self._connection is not None and self.points and self.areas
