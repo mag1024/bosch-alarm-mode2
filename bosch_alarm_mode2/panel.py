@@ -203,14 +203,10 @@ class Panel:
         await self._area_arm(area_id, self._all_arming_id)
 
     async def set_output_active(self, output_id):
-        request = bytearray([output_id, OUTPUT_STATUS.ACTIVE])
-        await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
-        self.outputs[output_id].status = OUTPUT_STATUS.ACTIVE
+        await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
 
     async def set_output_inactive(self, output_id):
-        request = bytearray([output_id, OUTPUT_STATUS.INACTIVE])
-        await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
-        self.outputs[output_id].status = OUTPUT_STATUS.INACTIVE
+        await self._set_output_state(output_id, OUTPUT_STATUS.INACTIVE)
 
     def connection_status(self) -> bool:
         return self._connection is not None and self.points and self.areas
@@ -496,6 +492,11 @@ class Panel:
                 b >>= 1
             index += 8
 
+    async def _set_output_state(self, output_id, state):
+        request = bytearray([output_id, state])
+        self.outputs[output_id].status = state
+        await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+
     async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
@@ -541,7 +542,7 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
-
+        print(BE_INT.int16(data))
         output_id = BE_INT.int16(data) - self._async_output_offset
         if output_id not in self.outputs:
             return 3
