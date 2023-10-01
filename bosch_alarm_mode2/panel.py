@@ -356,7 +356,9 @@ class Panel:
         if self._supports_status:
             data = await self._connection.send_command(
                 CMD.REQUEST_PANEL_SYSTEM_STATUS)
-            self.firmware_version = f"{data[0]}.{data[1]}"
+            version = data[0]
+            revision = int.from_bytes(data[1:2], 'big')
+            self.firmware_version = f"v{version}.{revision}"
 
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
