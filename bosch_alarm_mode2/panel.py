@@ -202,8 +202,12 @@ class Panel:
     async def area_arm_all(self, area_id):
         await self._area_arm(area_id, self._all_arming_id)
 
-    async def output_set_status(self, output_id, status):
-        request = bytearray([output_id, status])
+    async def set_output_active(self, output_id):
+        request = bytearray([output_id, OUTPUT_STATUS.ACTIVE])
+        await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+
+    async def set_output_inactive(self, output_id):
+        request = bytearray([output_id, OUTPUT_STATUS.INACTIVE])
         await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
 
     def connection_status(self) -> bool:
