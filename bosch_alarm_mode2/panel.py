@@ -491,6 +491,13 @@ class Panel:
                     self.outputs[id].status = int(b & 1 != 0)
                 b >>= 1
             index += 8
+        
+        # The OUTPUT_STATUS command only returns data for the highest active output.
+        # This means that we need to fill in any other outputs.
+        for id, output in self.outputs.items():
+            if id > index * 8:
+                output.status = OUTPUT_STATUS.INACTIVE 
+
 
     async def _set_output_state(self, output_id, state):
         request = bytearray([output_id, state])
