@@ -106,10 +106,10 @@ class Output(PanelEntity):
         PanelEntity.__init__(self, name, status)
 
     def is_active(self) -> bool:
-        return self.status  == OUTPUT_STATUS.ACTIVE
+        return self.status == OUTPUT_STATUS.ACTIVE
     
     def is_inactive(self) -> bool:
-        return self.status  == OUTPUT_STATUS.INACTIVE
+        return self.status == OUTPUT_STATUS.INACTIVE
 
     def reset(self):
         self.status = OUTPUT_STATUS.UNKNOWN
