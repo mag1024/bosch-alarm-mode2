@@ -99,6 +99,23 @@ class Point(PanelEntity):
 
     def __repr__(self):
         return f"{self.name}: {POINT_STATUS.TEXT[self.status]}"
+    
+
+class Output(PanelEntity):
+    def __init__(self, name = None, status = OUTPUT_STATUS.UNKNOWN):
+        PanelEntity.__init__(self, name, status)
+
+    def is_active(self) -> bool:
+        return self.status  == OUTPUT_STATUS.ACTIVE
+    
+    def is_inactive(self) -> bool:
+        return self.status  == OUTPUT_STATUS.INACTIVE
+
+    def reset(self):
+        self.status = OUTPUT_STATUS.UNKNOWN
+
+    def __repr__(self):
+        return f"{self.name}: {OUTPUT_STATUS.TEXT[self.status]}"
 
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
@@ -123,6 +140,7 @@ class Panel:
         self._history_cmd = None
         self.areas = {}
         self.points = {}
+        self.outputs = {}
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_subscriptions = False
@@ -145,9 +163,11 @@ class Panel:
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
+            await self._load_outputs()
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
+            await self._load_output_status()
             await self._load_history()
             if self._supports_subscriptions:
                 await self._subscribe()
@@ -194,6 +214,9 @@ class Panel:
         if self.points:
             print('Points:')
             print(self.points)
+        if self.outputs:
+            print('Outputs:')
+            print(self.outputs)
         if self.events:
             print('Events:')
             print(*self.events, sep="\n")
@@ -260,6 +283,7 @@ class Panel:
                 await asyncio.sleep(1)
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
+                await self._load_output_status()
                 await self._get_alarm_status()
                 await self._load_history()
                 self._last_msg = datetime.now()
@@ -342,6 +366,10 @@ class Panel:
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
 
+    async def _load_outputs(self):
+        names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT")
+        self.outputs = {id: Output(name) for id, name in names.items()}
+
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
         self.areas = {id: Area(name) for id, name in names.items()}
@@ -366,8 +394,12 @@ class Panel:
         return names
 
     async def _load_names_cf01(self, name_cmd, names) -> dict[int, str]:
+        # Outputs use 1 byte for cf01, everything else uses 2.
         for id in names.keys():
-            request = bytearray(id.to_bytes(2, 'big'))
+            if name_cmd == CMD.OUTPUT_TEXT:
+                request = bytearray([id]) 
+            else:
+                request = bytearray(id.to_bytes(2, 'big'))
             request.append(0x00)  # primary language
             data = await self._connection.send_command(name_cmd, request)
             name = data.split(b'\x00', 1)[0]
@@ -390,7 +422,6 @@ class Panel:
 
     async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
         names = await self._load_enabled_entities(config_cmd, type)
-
         if self._supports_command_request_area_text_cf03:
             return await self._load_names_cf03(name_cmd, names)
 
@@ -439,6 +470,18 @@ class Panel:
             entities[BE_INT.int16(response)].status = response[2]
             response = response[3:]
 
+    async def _load_output_status(self):
+        response = await self._connection.send_command(CMD.OUTPUT_STATUS)
+        index = 0
+        while response:
+            b = response.pop(0)
+            for i in range(8):
+                id = index + (8 - i)
+                if id in self.outputs:
+                    self.outputs[id].status = int(b & 1 != 0)
+                b >>= 1
+            index += 8
+
     async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
@@ -456,7 +499,7 @@ class Panel:
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
-        data += IGNORE    # output status
+        data += SUBSCRIBE    # output status
         data += SUBSCRIBE # point status
         data += IGNORE    # door status
         data += IGNORE    # unused
@@ -483,6 +526,14 @@ class Panel:
             area_id, AREA_READY[ready_status], faults))
         return 5
 
+    def _output_status_consumer(self, data) -> int:
+        output_id = BE_INT.int16(data) - 6
+        if output_id not in self.outputs:
+            return 3
+        output_status = self.outputs[output_id].status = int(data[2] != 0)
+        LOG.debug("Output updated %d: %s" % (output_id, OUTPUT_STATUS.TEXT[output_status]))
+        return 3
+    
     def _point_status_consumer(self, data) -> int:
         point_id = BE_INT.int16(data)
         self.points[point_id].status = data[2]
@@ -512,6 +563,7 @@ class Panel:
             0x02: self._event_history_consumer,
             0x04: self._area_on_off_consumer,
             0x05: self._area_ready_consumer,
+            0x06: self._output_status_consumer,
             0x07: self._point_status_consumer,
         }
         pos = 0
