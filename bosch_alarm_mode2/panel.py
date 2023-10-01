@@ -542,7 +542,6 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
-        print(BE_INT.int16(data))
         output_id = BE_INT.int16(data) - self._async_output_offset
         if output_id not in self.outputs:
             return 3
