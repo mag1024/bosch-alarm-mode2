@@ -188,6 +188,7 @@ class Panel:
 
     def print(self):
         if self.model: print('Model:', self.model)
+        if self.firmware_version: print('Firmware version:', self.firmware_version)
         if self.protocol_version: print('Protocol version:', self.protocol_version)
         if self.serial_number: print('Serial number:', self.serial_number)
         if self.areas:
