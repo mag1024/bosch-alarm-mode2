@@ -358,7 +358,8 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
-            # Solution panels seem to give us outputs starting at 6 instead of 0.
+            # It seems the async commands give us all outputs, while every other command
+            # only works with remote outputs, which start at output 6.
             self._async_output_offset = 6
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
