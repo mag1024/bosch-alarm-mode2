@@ -146,6 +146,7 @@ class Panel:
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
+        self._async_output_offset = 0
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -351,6 +352,8 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
+            # Solution panels seem to give us outputs starting at 6 instead of 0.
+            self._async_output_offset = 6
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
@@ -531,7 +534,8 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
-        output_id = BE_INT.int16(data) - 6
+
+        output_id = BE_INT.int16(data) - self._async_output_offset
         if output_id not in self.outputs:
             return 3
         output_status = self.outputs[output_id].status = int(data[2] != 0)
