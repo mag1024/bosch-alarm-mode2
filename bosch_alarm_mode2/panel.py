@@ -117,6 +117,7 @@ class Panel:
 
         self.model = None
         self.protocol_version = None
+        self.firmware_version = None
         self.serial_number = None
         self._history = History()
         self._history_cmd = None
@@ -338,6 +339,7 @@ class Panel:
         if bitmask[0] & 0x10:
             self._connection.protocol = PROTOCOL.EXTENDED
         self._supports_serial = bitmask[13] & 0x04
+        self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
         self._supports_command_request_area_text_cf01 = bitmask[7] & 0x20
         self._supports_command_request_area_text_cf03 = bitmask[7] & 0x08
@@ -350,6 +352,10 @@ class Panel:
             data = await self._connection.send_command(
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
+        if self._supports_status:
+            data = await self._connection.send_command(
+                CMD.REQUEST_PANEL_SYSTEM_STATUS)
+            self.firmware_version = f"{data[0]}.{data[1]}"
 
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
