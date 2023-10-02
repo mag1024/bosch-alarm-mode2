@@ -146,7 +146,7 @@ class Panel:
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
-        self._async_output_offset = 0
+        self._output_subscription_start_index = 0
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -356,7 +356,7 @@ class Panel:
             self._all_arming_id = AREA_ARMING_AWAY
             # It seems the async commands give us all outputs, while every other command
             # only works with remote outputs, which start at output 6.
-            self._async_output_offset = 6
+            self._output_subscription_start_index = 6
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
@@ -377,7 +377,7 @@ class Panel:
             self.serial_number = int.from_bytes(data[0:6], 'big')
 
     async def _load_outputs(self):
-        names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT")
+        names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
         self.outputs = {id: Output(name) for id, name in names.items()}
 
     async def _load_areas(self):
@@ -403,13 +403,10 @@ class Panel:
                     names[id] = name.decode('ascii')
         return names
 
-    async def _load_names_cf01(self, name_cmd, names) -> dict[int, str]:
+    async def _load_names_cf01(self, name_cmd, names, id_size=2) -> dict[int, str]:
         # Outputs use 1 byte for cf01, everything else uses 2.
         for id in names.keys():
-            if name_cmd == CMD.OUTPUT_TEXT:
-                request = bytearray([id]) 
-            else:
-                request = bytearray(id.to_bytes(2, 'big'))
+            request = bytearray(id.to_bytes(id_size, 'big'))
             request.append(0x00)  # primary language
             data = await self._connection.send_command(name_cmd, request)
             name = data.split(b'\x00', 1)[0]
@@ -430,13 +427,13 @@ class Panel:
             index += 8
         return names
 
-    async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
+    async def _load_names(self, name_cmd, config_cmd, type, id_size=2) -> dict[int, str]:
         names = await self._load_enabled_entities(config_cmd, type)
         if self._supports_command_request_area_text_cf03:
             return await self._load_names_cf03(name_cmd, names)
 
         if self._supports_command_request_area_text_cf01:
-            return await self._load_names_cf01(name_cmd, names)
+            return await self._load_names_cf01(name_cmd, names, id_size)
 
         # And then if CF01 isn't available, we can just return a list of names
         return names
@@ -481,23 +478,9 @@ class Panel:
             response = response[3:]
 
     async def _load_output_status(self):
-        response = await self._connection.send_command(CMD.OUTPUT_STATUS)
-        index = 0
-        while response:
-            b = response.pop(0)
-            for i in range(8):
-                id = index + (8 - i)
-                if id in self.outputs:
-                    self.outputs[id].status = int(b & 1 != 0)
-                b >>= 1
-            index += 8
-        
-        # The OUTPUT_STATUS command only returns data for the highest active output.
-        # This means that we need to fill in any other outputs.
+        enabled = await self._load_enabled_entities(CMD.OUTPUT_STATUS, "OUTPUT")
         for id, output in self.outputs.items():
-            if id > index * 8:
-                output.status = OUTPUT_STATUS.INACTIVE 
-
+            output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
 
     async def _set_output_state(self, output_id, state):
         request = bytearray([output_id, state])
@@ -521,7 +504,7 @@ class Panel:
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
-        data += SUBSCRIBE    # output status
+        data += SUBSCRIBE # output status
         data += SUBSCRIBE # point status
         data += IGNORE    # door status
         data += IGNORE    # unused
@@ -549,7 +532,7 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
-        output_id = BE_INT.int16(data) - self._async_output_offset
+        output_id = BE_INT.int16(data) - self._output_subscription_start_index
         if output_id not in self.outputs:
             return 3
         output_status = self.outputs[output_id].status = int(data[2] != 0)
