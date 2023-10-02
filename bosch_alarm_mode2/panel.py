@@ -483,7 +483,6 @@ class Panel:
 
     async def _set_output_state(self, output_id, state):
         request = bytearray([output_id, state])
-        self.outputs[output_id].status = state
         await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
 
     async def _area_arm(self, area_id, arm_type):
