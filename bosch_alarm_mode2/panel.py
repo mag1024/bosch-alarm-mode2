@@ -354,8 +354,10 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
-            # It seems the async commands give us all outputs, while every other command
-            # only works with remote outputs, which start at output 6.
+            # The solution panels only offer control over remote outputs. 
+            # For this reason, all other output types don't show up in commands at all.
+            # However, it seems that subscriptions DO give us updates for other outputs. 
+            # For this reason, solution panels need to offset output IDs when parsing output updates.
             self._output_subscription_start_index = 6
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
