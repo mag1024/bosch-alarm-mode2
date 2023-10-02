@@ -144,6 +144,7 @@ class Panel:
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
         self._output_subscription_start_index = 0
+        self._output_semaphore = asyncio.Semaphore(1)
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -482,8 +483,9 @@ class Panel:
             output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
 
     async def _set_output_state(self, output_id, state):
-        request = bytearray([output_id, state])
-        await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+        async with self._output_semaphore:
+            request = bytearray([output_id, state])
+            await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
 
     async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
