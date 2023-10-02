@@ -535,10 +535,9 @@ class Panel:
 
     def _output_status_consumer(self, data) -> int:
         output_id = BE_INT.int16(data) - self._output_subscription_start_index
-        if output_id not in self.outputs:
-            return 3
-        output_status = self.outputs[output_id].status = int(data[2] != 0)
-        LOG.debug("Output updated %d: %s" % (output_id, OUTPUT_STATUS.TEXT[output_status]))
+        if output_id in self.outputs:
+            output_status = self.outputs[output_id].status = int(data[2] != 0)
+            LOG.debug("Output updated %d: %s" % (output_id, OUTPUT_STATUS.TEXT[output_status]))
         return 3
     
     def _point_status_consumer(self, data) -> int:
