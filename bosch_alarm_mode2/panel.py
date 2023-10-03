@@ -132,6 +132,7 @@ class Panel:
 
         self.model = None
         self.protocol_version = None
+        self.firmware_version = None
         self.serial_number = None
         self._history = History()
         self._history_cmd = None
@@ -140,11 +141,13 @@ class Panel:
         self.outputs = {}
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
+        self._supports_serial = False
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
+        self._supports_automation_user = True
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -158,7 +161,7 @@ class Panel:
 
     async def load(self, load_selector):
         if load_selector & self.LOAD_BASIC_INFO:
-            await self._basicinfo()
+            await self._extended_info()
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
@@ -211,6 +214,7 @@ class Panel:
 
     def print(self):
         if self.model: print('Model:', self.model)
+        if self.firmware_version: print('Firmware version:', self.firmware_version)
         if self.protocol_version: print('Protocol version:', self.protocol_version)
         if self.serial_number: print('Serial number:', self.serial_number)
         if self.areas:
@@ -237,6 +241,7 @@ class Panel:
                 timeout=10)
         self._last_msg = datetime.now()
         self._connection = connection
+        await self._basicinfo()
         await self._authenticate()
         LOG.debug("Authentication success!")
         await self.load(load_selector)
@@ -311,12 +316,21 @@ class Panel:
             except asyncio.exceptions.TimeoutError as e:
                 LOG.debug("Connection timed out...")
 
-    async def _login_remote_user(self):
-        creds = int(str(self._passcode).ljust(8, "F"), 16)
-        creds = creds.to_bytes(4, "big")
-        await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
+    async def _authenticate_remote_user(self):
+        if not self._passcode.isnumeric():
+            raise PermissionError(
+                "Solution panels require a user code. These codes should only contain numerical digits.")
+        if len(self._passcode) > 8:
+            raise PermissionError(
+                "Solution panels require a user code. These codes have a maximum length of 8 digits.")
+        try:
+            creds = int(str(self._passcode).ljust(8, "F"), 16)
+            creds = creds.to_bytes(4, "big")
+            await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
+        except Exception:
+            raise PermissionError("Authentication failed, please check your passcode.")
 
-    async def _authenticate(self):
+    async def _authenticate_automation_user(self):
         creds = bytearray(b'\x01')  # automation user
         creds.extend(map(ord, self._passcode))
         creds.append(0x00) # null terminate
@@ -324,19 +338,16 @@ class Panel:
         if result and result[0] == 0x01:
             return
 
-        # Fallback on user authentication
-        if self._passcode.isnumeric():
-            LOG.info("Authentication failed, trying remote user")
-            try:
-                await self._login_remote_user()
-                return
-            except Exception:
-                pass
-
         self._connection.close()
         error = ["Not Authorized", "Authorized",
                 "Max Connections"][result[0] if result else 0]
         raise PermissionError("Authentication failed: " + error)
+
+    async def _authenticate(self):
+        if self._supports_automation_user:
+            await self._authenticate_automation_user()
+        else:
+            await self._authenticate_remote_user()
 
     async def _basicinfo(self):
         try:
@@ -356,6 +367,7 @@ class Panel:
             # For most commands, output 0 is the first remote output.
             # However, subscriptions status messages include information about all outputs, and remote outputs start at index 6.
             self._output_subscription_start_index = 6
+            self._supports_automation_user = False
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
@@ -363,6 +375,8 @@ class Panel:
         bitmask = data[23:].ljust(33, b'\0')
         if bitmask[0] & 0x10:
             self._connection.protocol = PROTOCOL.EXTENDED
+        self._supports_serial = bitmask[13] & 0x04
+        self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
         self._supports_command_request_area_text_cf01 = bitmask[7] & 0x20
         self._supports_command_request_area_text_cf03 = bitmask[7] & 0x08
@@ -370,10 +384,17 @@ class Panel:
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
                 CMD.REQUEST_RAW_HISTORY_EVENTS)
-        if bitmask[13] & 0x04:  # supports serial read
+    async def _extended_info(self):
+        if self._supports_serial:  # supports serial read
             data = await self._connection.send_command(
                 CMD.PRODUCT_SERIAL, b'\x00\x00')
             self.serial_number = int.from_bytes(data[0:6], 'big')
+        if self._supports_status:
+            data = await self._connection.send_command(
+                CMD.REQUEST_PANEL_SYSTEM_STATUS)
+            version = data[0]
+            revision = int.from_bytes(data[1:2], 'big')
+            self.firmware_version = 'v%d.%d' % (version, revision)
 
     async def _load_outputs(self):
         names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
