@@ -11,7 +11,7 @@ In practice, this library has only been tested with B8512G and the B5512 and the
 
 #### Authentication
 - For B and G series panels, in the "Automation / Remote App" section of panel settings set the "Automation Device" to "Mode 2", and set the "Automation Passcode" to at least 10 characters.
-- For the Solution panels, use the same code you use with RSC+ app.
+- For the Solution panels, use your user code
 
 Full documentation of the API can be requested from
 integrated.solutions@us.bosch.com.
