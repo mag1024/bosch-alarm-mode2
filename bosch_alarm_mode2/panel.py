@@ -387,8 +387,9 @@ class Panel:
         names = await self._load_names(CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, "POINT")
         self.points = {id: Point(name) for id, name in names.items()}
 
-    async def _load_names_cf03(self, name_cmd, names) -> dict[int, str]:
+    async def _load_names_cf03(self, name_cmd, enabled_ids) -> dict[int, str]:
         id = 0
+        names = {}
         while True:
             request = bytearray(id.to_bytes(2, 'big'))
             request.append(0x00)  # primary language
@@ -398,13 +399,13 @@ class Panel:
             while data:
                 id = BE_INT.int16(data)
                 name, data = data[2:].split(b'\x00', 1)
-                if id in names:
+                if id in enabled_ids:
                     names[id] = name.decode('ascii')
         return names
 
-    async def _load_names_cf01(self, name_cmd, names, id_size=2) -> dict[int, str]:
-        # Outputs use 1 byte for cf01, everything else uses 2.
-        for id in names.keys():
+    async def _load_names_cf01(self, name_cmd, enabled_ids, id_size=2) -> dict[int, str]:
+        names = {}
+        for id in enabled_ids:
             request = bytearray(id.to_bytes(id_size, 'big'))
             request.append(0x00)  # primary language
             data = await self._connection.send_command(name_cmd, request)
@@ -428,16 +429,18 @@ class Panel:
 
     async def _load_names(self, name_cmd, config_cmd, type, id_size=2) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
+        
+        if self._supports_command_request_area_text_cf03:
+            return await self._load_names_cf03(name_cmd, enabled_ids)
+
+        if self._supports_command_request_area_text_cf01:
+            return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
+        
+        # And then if CF01 isn't available, we can justgenerate a list of names and return that
         names = {}
         for id in enabled_ids:
             names[id] = f"{type}{id}"
-        if self._supports_command_request_area_text_cf03:
-            return await self._load_names_cf03(name_cmd, names)
 
-        if self._supports_command_request_area_text_cf01:
-            return await self._load_names_cf01(name_cmd, names, id_size)
-
-        # And then if CF01 isn't available, we can just return a list of names
         return names
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
