@@ -413,7 +413,7 @@ class Panel:
             names[id] = name.decode('ascii')
         return names
 
-    async def _load_entity_set(self, cmd) -> int[]:
+    async def _load_entity_set(self, cmd) -> [int]:
         data = await self._connection.send_command(cmd)
         ids = []
         index = 0
