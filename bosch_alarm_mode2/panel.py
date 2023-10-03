@@ -436,7 +436,7 @@ class Panel:
         if self._supports_command_request_area_text_cf01:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
         
-        # And then if CF01 isn't available, we can justgenerate a list of names and return that
+        # And then if CF01 isn't available, we can just generate a list of names and return that
         names = {}
         for id in enabled_ids:
             names[id] = f"{type}{id}"
