@@ -352,10 +352,9 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
-            # The solution panels only offer control over remote outputs. 
-            # For this reason, all other output types don't show up in commands at all.
-            # However, it seems that subscriptions DO give us updates for other outputs. 
-            # For this reason, solution panels need to offset output IDs when parsing output updates.
+            # The solution panels only offer control over outputs with the "remote output" type.
+            # For most commands, output 0 is the first remote output.
+            # However, subscriptions status messages include information about all outputs, and remote outputs start at index 6.
             self._output_subscription_start_index = 6
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
@@ -413,22 +412,25 @@ class Panel:
             names[id] = name.decode('ascii')
         return names
 
-    async def _load_enabled_entities(self, config_cmd, type) -> dict[int, str]:
-        data = await self._connection.send_command(config_cmd)
-        names = {}
+    async def _load_entity_set(self, cmd) -> int[]:
+        data = await self._connection.send_command(cmd)
+        ids = []
         index = 0
         while data:
             b = data.pop(0)
             for i in range(8):
                 id = index + (8 - i)
                 if b & 1 != 0:
-                    names[id] = f"{type}{id}"
+                    ids.append(id)
                 b >>= 1
             index += 8
-        return names
+        return ids
 
     async def _load_names(self, name_cmd, config_cmd, type, id_size=2) -> dict[int, str]:
-        names = await self._load_enabled_entities(config_cmd, type)
+        enabled_ids = await self._load_entity_set(config_cmd)
+        names = {}
+        for id in enabled_ids:
+            names[id] = f"{type}{id}"
         if self._supports_command_request_area_text_cf03:
             return await self._load_names_cf03(name_cmd, names)
 
@@ -478,7 +480,7 @@ class Panel:
             response = response[3:]
 
     async def _load_output_status(self):
-        enabled = await self._load_enabled_entities(CMD.OUTPUT_STATUS, "OUTPUT")
+        enabled = await self._load_entity_set(CMD.OUTPUT_STATUS, "OUTPUT")
         for id, output in self.outputs.items():
             output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
 
