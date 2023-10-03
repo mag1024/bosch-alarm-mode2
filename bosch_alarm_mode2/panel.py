@@ -129,7 +129,7 @@ class Panel:
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
-        self._is_solution_or_amax = False
+        self._supports_automation_user = True
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -287,6 +287,12 @@ class Panel:
                 LOG.debug("Connection timed out...")
 
     async def _authenticate_remote_user(self):
+        if not self._passcode.isnumeric():
+            raise PermissionError(
+                "Solution panels require a user code. These codes should only contain numerical digits.")
+        if len(self._passcode) > 8:
+            raise PermissionError(
+                "Solution panels require a user code. These codes have a maximum length of 8 digits.")
         try:
             creds = int(str(self._passcode).ljust(8, "F"), 16)
             creds = creds.to_bytes(4, "big")
@@ -308,14 +314,10 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
-        if self._is_solution_or_amax:
-            if not self._passcode.isnumeric():
-                raise PermissionError("Solution panels require a user code. These codes should only contain numerical digits.")
-            if len(self._passcode) > 8:
-                raise PermissionError("Solution panels require a user code. These codes have a maximum length of 8 digits.")
-            await self._authenticate_remote_user()
-        else:
+        if self._supports_automation_user:
             await self._authenticate_automation_user()
+        else:
+            await self._authenticate_remote_user()
 
     async def _basicinfo(self):
         try:
@@ -331,7 +333,7 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
-            self._is_solution_or_amax = True
+            self._supports_automation_user = False
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
@@ -358,7 +360,7 @@ class Panel:
                 CMD.REQUEST_PANEL_SYSTEM_STATUS)
             version = data[0]
             revision = int.from_bytes(data[1:2], 'big')
-            self.firmware_version = f"v{version}.{revision}"
+            self.firmware_version = 'v%d.%d' % (version, revision)
 
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
