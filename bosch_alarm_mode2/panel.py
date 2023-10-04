@@ -365,7 +365,8 @@ class Panel:
             self._all_arming_id = AREA_ARMING_AWAY
             # The solution panels only offer control over outputs with the "remote output" type.
             # For most commands, output 0 is the first remote output.
-            # However, subscriptions status messages include information about all outputs, and remote outputs start at index 6.
+            # However, subscriptions status messages include information about all outputs. 
+            # Outputs with the "remote output" type start at index 6.
             self._output_subscription_start_index = 6
             self._supports_automation_user = False
         else:
@@ -458,11 +459,7 @@ class Panel:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
         
         # And then if CF01 isn't available, we can just generate a list of names and return that
-        names = {}
-        for id in enabled_ids:
-            names[id] = f"{type}{id}"
-
-        return names
+        return {id: f"{type}{id}" for id in enabled_ids}
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
         request = bytearray([priority])
