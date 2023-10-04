@@ -88,6 +88,17 @@ class AREA_STATUS:
         0x0E: "Away Entry Delay",
     }
 
+class OUTPUT_STATUS:
+    INACTIVE = 0x00
+    ACTIVE = 0x01
+    UNKNOWN = 0x02
+
+    TEXT = {
+        0x00: "Inactive",
+        0x01: "Active",
+        0x02: "Unknown"
+    }
+
 AREA_READY_NOT = 0x00
 AREA_READY_PART = 0x01
 AREA_READY_ALL = 0x02
@@ -153,6 +164,11 @@ class CMD:
     AREA_STATUS = 0x26
     AREA_ARM = 0x27
     AREA_TEXT = 0x29
+    # Output group
+    REQUEST_CONFIGURED_OUTPUTS = 0x30
+    OUTPUT_STATUS = 0x31
+    SET_OUTPUT_STATE = 0x32
+    OUTPUT_TEXT = 0x33
     # Point group
     REQUEST_CONFIGURED_POINTS = 0x35
     POINT_STATUS = 0x38

@@ -99,6 +99,20 @@ class Point(PanelEntity):
 
     def __repr__(self):
         return f"{self.name}: {POINT_STATUS.TEXT[self.status]}"
+    
+
+class Output(PanelEntity):
+    def __init__(self, name = None, status = OUTPUT_STATUS.UNKNOWN):
+        PanelEntity.__init__(self, name, status)
+
+    def is_active(self) -> bool:
+        return self.status == OUTPUT_STATUS.ACTIVE
+
+    def reset(self):
+        self.status = OUTPUT_STATUS.UNKNOWN
+
+    def __repr__(self):
+        return f"{self.name}: {OUTPUT_STATUS.TEXT[self.status]}"
 
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
@@ -124,12 +138,15 @@ class Panel:
         self._history_cmd = None
         self.areas = {}
         self.points = {}
+        self.outputs = {}
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
+        self._output_subscription_start_index = 0
+        self._output_semaphore = asyncio.Semaphore(1)
         self._supports_automation_user = True
 
     LOAD_BASIC_INFO = 1 << 0
@@ -148,9 +165,11 @@ class Panel:
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
             await self._load_points()
+            await self._load_outputs()
         if load_selector & self.LOAD_STATUS:
             await self._load_entity_status(CMD.AREA_STATUS, self.areas)
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
+            await self._load_output_status()
             await self._load_history()
             if self._supports_subscriptions:
                 await self._subscribe()
@@ -184,6 +203,12 @@ class Panel:
     async def area_arm_all(self, area_id):
         await self._area_arm(area_id, self._all_arming_id)
 
+    async def set_output_active(self, output_id):
+        await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
+
+    async def set_output_inactive(self, output_id):
+        await self._set_output_state(output_id, OUTPUT_STATUS.INACTIVE)
+
     def connection_status(self) -> bool:
         return self._connection is not None and self.points and self.areas
 
@@ -198,6 +223,9 @@ class Panel:
         if self.points:
             print('Points:')
             print(self.points)
+        if self.outputs:
+            print('Outputs:')
+            print(self.outputs)
         if self.events:
             print('Events:')
             print(*self.events, sep="\n")
@@ -265,6 +293,7 @@ class Panel:
                 await asyncio.sleep(1)
                 await self._load_entity_status(CMD.AREA_STATUS, self.areas)
                 await self._load_entity_status(CMD.POINT_STATUS, self.points)
+                await self._load_output_status()
                 await self._get_alarm_status()
                 await self._load_history()
                 self._last_msg = datetime.now()
@@ -334,6 +363,11 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
+            # The solution panels only offer control over outputs with the "remote output" type.
+            # For most commands, output 0 is the first remote output.
+            # However, subscriptions status messages include information about all outputs. 
+            # Outputs with the "remote output" type start at index 6.
+            self._output_subscription_start_index = 6
             self._supports_automation_user = False
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
@@ -363,6 +397,10 @@ class Panel:
             revision = int.from_bytes(data[1:2], 'big')
             self.firmware_version = 'v%d.%d' % (version, revision)
 
+    async def _load_outputs(self):
+        names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
+        self.outputs = {id: Output(name) for id, name in names.items()}
+
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
         self.areas = {id: Area(name) for id, name in names.items()}
@@ -371,8 +409,9 @@ class Panel:
         names = await self._load_names(CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, "POINT")
         self.points = {id: Point(name) for id, name in names.items()}
 
-    async def _load_names_cf03(self, name_cmd, names) -> dict[int, str]:
+    async def _load_names_cf03(self, name_cmd, enabled_ids) -> dict[int, str]:
         id = 0
+        names = {}
         while True:
             request = bytearray(id.to_bytes(2, 'big'))
             request.append(0x00)  # primary language
@@ -382,44 +421,45 @@ class Panel:
             while data:
                 id = BE_INT.int16(data)
                 name, data = data[2:].split(b'\x00', 1)
-                if id in names:
+                if id in enabled_ids:
                     names[id] = name.decode('ascii')
         return names
 
-    async def _load_names_cf01(self, name_cmd, names) -> dict[int, str]:
-        for id in names.keys():
-            request = bytearray(id.to_bytes(2, 'big'))
+    async def _load_names_cf01(self, name_cmd, enabled_ids, id_size=2) -> dict[int, str]:
+        names = {}
+        for id in enabled_ids:
+            request = bytearray(id.to_bytes(id_size, 'big'))
             request.append(0x00)  # primary language
             data = await self._connection.send_command(name_cmd, request)
             name = data.split(b'\x00', 1)[0]
             names[id] = name.decode('ascii')
         return names
 
-    async def _load_enabled_entities(self, config_cmd, type) -> dict[int, str]:
-        data = await self._connection.send_command(config_cmd)
-        names = {}
+    async def _load_entity_set(self, cmd) -> [int]:
+        data = await self._connection.send_command(cmd)
+        ids = []
         index = 0
         while data:
             b = data.pop(0)
             for i in range(8):
                 id = index + (8 - i)
                 if b & 1 != 0:
-                    names[id] = f"{type}{id}"
+                    ids.append(id)
                 b >>= 1
             index += 8
-        return names
+        return ids
 
-    async def _load_names(self, name_cmd, config_cmd, type) -> dict[int, str]:
-        names = await self._load_enabled_entities(config_cmd, type)
-
+    async def _load_names(self, name_cmd, config_cmd, type, id_size=2) -> dict[int, str]:
+        enabled_ids = await self._load_entity_set(config_cmd)
+        
         if self._supports_command_request_area_text_cf03:
-            return await self._load_names_cf03(name_cmd, names)
+            return await self._load_names_cf03(name_cmd, enabled_ids)
 
         if self._supports_command_request_area_text_cf01:
-            return await self._load_names_cf01(name_cmd, names)
-
-        # And then if CF01 isn't available, we can just return a list of names
-        return names
+            return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
+        
+        # And then if CF01 isn't available, we can just generate a list of names and return that
+        return {id: f"{type}{id}" for id in enabled_ids}
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
         request = bytearray([priority])
@@ -460,6 +500,21 @@ class Panel:
             entities[BE_INT.int16(response)].status = response[2]
             response = response[3:]
 
+    async def _load_output_status(self):
+        enabled = await self._load_entity_set(CMD.OUTPUT_STATUS)
+        for id, output in self.outputs.items():
+            output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
+
+    async def _set_output_state(self, output_id, state):
+        # During testing, it was found that toggling the state of multiple outputs at once
+        # would ocassionally stop the panel from responding with a subscription event
+        # to acknowledge the state change. This would mean that home assistant and the 
+        # panel would end up out of sync, but limiting concurrent changes with a semaphore
+        # would stop this from happening.
+        async with self._output_semaphore:
+            request = bytearray([output_id, state])
+            await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+
     async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
@@ -477,7 +532,7 @@ class Panel:
         data += IGNORE    # config change
         data += SUBSCRIBE # area on/off
         data += SUBSCRIBE # area ready
-        data += IGNORE    # output status
+        data += SUBSCRIBE # output status
         data += SUBSCRIBE # point status
         data += IGNORE    # door status
         data += IGNORE    # unused
@@ -504,6 +559,13 @@ class Panel:
             area_id, AREA_READY[ready_status], faults))
         return 5
 
+    def _output_status_consumer(self, data) -> int:
+        output_id = BE_INT.int16(data) - self._output_subscription_start_index
+        if output_id in self.outputs:
+            output_status = self.outputs[output_id].status = int(data[2] != 0)
+            LOG.debug("Output updated %d: %s" % (output_id, OUTPUT_STATUS.TEXT[output_status]))
+        return 3
+    
     def _point_status_consumer(self, data) -> int:
         point_id = BE_INT.int16(data)
         self.points[point_id].status = data[2]
@@ -533,6 +595,7 @@ class Panel:
             0x02: self._event_history_consumer,
             0x04: self._area_on_off_consumer,
             0x05: self._area_ready_consumer,
+            0x06: self._output_status_consumer,
             0x07: self._point_status_consumer,
         }
         pos = 0
