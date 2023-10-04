@@ -506,6 +506,11 @@ class Panel:
             output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
 
     async def _set_output_state(self, output_id, state):
+        # During testing, it was found that toggling the state of multiple outputs at once
+        # would ocassionally stop the panel from responding with a subscription event
+        # to acknowledge the state change. This would mean that home assistant and the 
+        # panel would end up out of sync, but limiting concurrent changes with a semaphore
+        # would stop this from happening.
         async with self._output_semaphore:
             request = bytearray([output_id, state])
             await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
