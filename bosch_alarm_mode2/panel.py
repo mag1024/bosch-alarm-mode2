@@ -453,7 +453,11 @@ class Panel:
         enabled_ids = await self._load_entity_set(config_cmd)
         
         if self._supports_command_request_area_text_cf03:
-            return await self._load_names_cf03(name_cmd, enabled_ids)
+            try:
+                return await self._load_names_cf03(name_cmd, enabled_ids)
+            except:
+                # If the panel doesn't really support CF03, then use CF01
+                self._supports_command_request_area_text_cf03 = False
 
         if self._supports_command_request_area_text_cf01:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
