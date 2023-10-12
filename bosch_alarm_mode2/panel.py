@@ -374,8 +374,8 @@ class Panel:
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
-        if bitmask[0] & 0x10:
-            self._connection.protocol = PROTOCOL.EXTENDED
+        # if bitmask[0] & 0x10:
+        #     self._connection.protocol = PROTOCOL.EXTENDED
         self._supports_serial = bitmask[13] & 0x04
         self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
