@@ -456,8 +456,11 @@ class Panel:
             try:
                 return await self._load_names_cf03(name_cmd, enabled_ids)
             except:
-                # If the panel doesn't really support CF03, then use CF01
-                self._supports_command_request_area_text_cf03 = False
+                if self._connection.protocol == PROTOCOL.BASIC:
+                    raise
+                # downgrade protocol to basic and retry
+                self._connection.protocol = PROTOCOL.BASIC
+                return await self._load_names_cf03(name_cmd, enabled_ids)
 
         if self._supports_command_request_area_text_cf01:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
