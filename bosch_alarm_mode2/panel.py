@@ -148,6 +148,7 @@ class Panel:
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
         self._supports_automation_user = True
+        self.name_encoding = 'ascii'
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -422,7 +423,7 @@ class Panel:
                 id = BE_INT.int16(data)
                 name, data = data[2:].split(b'\x00', 1)
                 if id in enabled_ids:
-                    names[id] = name.decode('ascii')
+                    names[id] = name.decode(self.name_encoding)
         return names
 
     async def _load_names_cf01(self, name_cmd, enabled_ids, id_size=2) -> dict[int, str]:
@@ -432,7 +433,7 @@ class Panel:
             request.append(0x00)  # primary language
             data = await self._connection.send_command(name_cmd, request)
             name = data.split(b'\x00', 1)[0]
-            names[id] = name.decode('ascii')
+            names[id] = name.decode(self.name_encoding)
         return names
 
     async def _load_entity_set(self, cmd) -> [int]:
