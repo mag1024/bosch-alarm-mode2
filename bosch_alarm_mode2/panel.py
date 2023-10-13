@@ -399,7 +399,7 @@ class Panel:
 
     async def _load_outputs(self):
         names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
-        self.outputs = {id: Output(name) for id, name in names.items()}
+        self.outputs = {id: Output(name) for id, name in names.items() if name}
 
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
