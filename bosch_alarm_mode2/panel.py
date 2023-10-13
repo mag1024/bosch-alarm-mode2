@@ -378,7 +378,7 @@ class Panel:
         # there is a bug with the extended protocol that leads to long events
         # being truncated in some cases, so we have disabled it for the moment.
         # This should eventually be solved in a future firmware update, and we
-        # at that point we can revisit this.
+        # at that point can revisit this.
         # if bitmask[0] & 0x10:
         #     self._connection.protocol = PROTOCOL.EXTENDED
         self._supports_serial = bitmask[13] & 0x04
