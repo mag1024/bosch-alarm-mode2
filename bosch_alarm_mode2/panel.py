@@ -374,6 +374,9 @@ class Panel:
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
+        # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
+        # there is a bug with the extended protocol that leads to long events
+        # being truncated in some cases, so we have disabled it for the moment.
         # if bitmask[0] & 0x10:
         #     self._connection.protocol = PROTOCOL.EXTENDED
         self._supports_serial = bitmask[13] & 0x04
