@@ -117,11 +117,12 @@ class Output(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, passcode):
+    def __init__(self, host, port, passcode, automation_code):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
         self._passcode = passcode
+        self._automation_code = automation_code
 
         self.connection_status_observer = Observable()
         self.history_observer = Observable()
@@ -148,6 +149,7 @@ class Panel:
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
         self._supports_automation_user = True
+        self._supports_remote_user = True
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -332,10 +334,16 @@ class Panel:
 
     async def _authenticate_automation_user(self):
         creds = bytearray(b'\x01')  # automation user
-        creds.extend(map(ord, self._passcode))
+        creds.extend(map(ord, self._automation_code))
         creds.append(0x00) # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
         if result and result[0] == 0x01:
+            try:
+                creds = int(str(1234).ljust(8, "F"), 16)
+                creds = creds.to_bytes(4, "big")
+                await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
+            except Exception:
+                raise PermissionError("Authentication failed, please check your passcode.")
             return
 
         self._connection.close()
@@ -346,7 +354,7 @@ class Panel:
     async def _authenticate(self):
         if self._supports_automation_user:
             await self._authenticate_automation_user()
-        else:
+        if self._supports_remote_user:
             await self._authenticate_remote_user()
 
     async def _basicinfo(self):
@@ -359,6 +367,12 @@ class Panel:
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
+        # Solution series uses only remote user 
+        # Amax series uses remote user + automation code
+        # Everything else uses just automation code
+        self._supports_remote_user = data[0] <= 0x24
+        self._supports_automation_user = data[0] >= 0x21
+
         # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
@@ -368,7 +382,7 @@ class Panel:
             # However, subscriptions status messages include information about all outputs. 
             # Outputs with the "remote output" type start at index 6.
             self._output_subscription_start_index = 6
-            self._supports_automation_user = False
+            self._supports_automation_user = True
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
@@ -386,10 +400,13 @@ class Panel:
         self._supports_subscriptions = bitmask[0] & 0x40
         self._supports_command_request_area_text_cf01 = bitmask[7] & 0x20
         self._supports_command_request_area_text_cf03 = bitmask[7] & 0x08
+        self._supports_command_request_output_text_cf01 = bitmask[9] & 0x40
+        self._supports_command_request_output_text_cf03 = bitmask[9] & 0x10
+        self._supports_command_request_point_text_cf01 = bitmask[11] & 0x80
+        self._supports_command_request_point_text_cf03 = bitmask[11] & 0x20
+        self._supports_command_alarm_memory_summary_cf01 = bitmask[2] & 0x20
         self._history.init_for_panel(data[0])
-        self._history_cmd = (
-                CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
-                CMD.REQUEST_RAW_HISTORY_EVENTS)
+        self._history_cmd = CMD.REQUEST_RAW_HISTORY_EVENTS
     async def _extended_info(self):
         if self._supports_serial:  # supports serial read
             data = await self._connection.send_command(
@@ -403,15 +420,30 @@ class Panel:
             self.firmware_version = 'v%d.%d' % (version, revision)
 
     async def _load_outputs(self):
-        names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
+        names = await self._load_names(
+            CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, 
+            self._supports_command_request_output_text_cf01, 
+            self._supports_command_request_output_text_cf03, 
+            "OUTPUT", 1
+        )
         self.outputs = {id: Output(name) for id, name in names.items() if name}
 
     async def _load_areas(self):
-        names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
+        names = await self._load_names(
+            CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, 
+            self._supports_command_request_area_text_cf01, 
+            self._supports_command_request_area_text_cf03, 
+            "AREA"
+        )
         self.areas = {id: Area(name) for id, name in names.items()}
 
     async def _load_points(self):
-        names = await self._load_names(CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, "POINT")
+        names = await self._load_names(
+            CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, 
+            self._supports_command_request_point_text_cf01, 
+            self._supports_command_request_point_text_cf03, 
+            "POINT"
+        )
         self.points = {id: Point(name) for id, name in names.items()}
 
     async def _load_names_cf03(self, name_cmd, enabled_ids) -> dict[int, str]:
@@ -454,13 +486,13 @@ class Panel:
             index += 8
         return ids
 
-    async def _load_names(self, name_cmd, config_cmd, type, id_size=2) -> dict[int, str]:
+    async def _load_names(self, name_cmd, config_cmd, supports_cf01, supports_cf03, type, id_size=2) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
         
-        if self._supports_command_request_area_text_cf03:
+        if supports_cf03:
             return await self._load_names_cf03(name_cmd, enabled_ids)
 
-        if self._supports_command_request_area_text_cf01:
+        if supports_cf01:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
         
         # And then if CF01 isn't available, we can just generate a list of names and return that
@@ -478,24 +510,31 @@ class Panel:
             point = BE_INT.int16(response_detail, 3)
             if point == 0xFFFF:
                 await self._get_alarms_for_priority(priority, area, point)
+            print(priority)
+            print(area)
+            print(point)
             if area in self.areas:
                 self.areas[area]._set_alarm(priority, True)
             else:
                 LOG.warning(
                     f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
             response_detail = response_detail[5:]
-
+        
     async def _get_alarm_status(self):
-        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY)
-        for priority in ALARM_MEMORY_PRIORITIES.keys():
-            i = (priority - 1) * 2
-            count = BE_INT.int16(data, i)
-            if count:
+        if self._supports_command_alarm_memory_summary_cf01:
+            data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY)
+            for priority in ALARM_MEMORY_PRIORITIES.keys():
+                i = (priority - 1) * 2
+                count = BE_INT.int16(data, i)
+                if count:
+                    await self._get_alarms_for_priority(priority)
+                else:
+                    # Nothing triggered, clear alarms
+                    for area in self.areas.values():
+                        area._set_alarm(priority, False)
+        else:
+            for priority in ALARM_MEMORY_PRIORITIES.keys():
                 await self._get_alarms_for_priority(priority)
-            else:
-                # Nothing triggered, clear alarms
-                for area in self.areas.values():
-                    area._set_alarm(priority, False)
 
     async def _load_entity_status(self, status_cmd, entities):
         request = bytearray()

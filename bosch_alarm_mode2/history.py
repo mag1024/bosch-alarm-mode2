@@ -53,6 +53,9 @@ class History:
     def parse_polled_events(self, event_data):
         count = event_data[0]
         start = BE_INT.int32(event_data, 1) + 1
+        # TODO: find a different way to get the max event count, as this just don't work right on AMAX panels
+        if start == 0xFFFFFFFF + 1:
+            return 0
         event_data = event_data[5:]
         # Panels can have large numbers of history events, which take a very
         # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
