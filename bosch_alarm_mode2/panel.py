@@ -117,11 +117,12 @@ class Output(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, passcode):
+    def __init__(self, host, port, passcode, automation_code):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
         self._passcode = passcode
+        self._automation_code = automation_code
 
         self.connection_status_observer = Observable()
         self.history_observer = Observable()
@@ -332,7 +333,7 @@ class Panel:
 
     async def _authenticate_automation_user(self):
         creds = bytearray(b'\x01')  # automation user
-        creds.extend(map(ord, self._passcode))
+        creds.extend(map(ord, self._automation_code))
         creds.append(0x00) # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
         if result and result[0] == 0x01:
@@ -346,7 +347,7 @@ class Panel:
     async def _authenticate(self):
         if self._supports_automation_user:
             await self._authenticate_automation_user()
-        else:
+        if self._supports_remote_user:
             await self._authenticate_remote_user()
 
     async def _basicinfo(self):
@@ -359,6 +360,12 @@ class Panel:
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
+        # Solution series uses only remote user 
+        # Amax series uses remote user + automation code
+        # Everything else uses just automation code
+        self._supports_remote_user = data[0] <= 0x24
+        self._supports_automation_user = data[0] >= 0x21
+
         # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
@@ -368,7 +375,6 @@ class Panel:
             # However, subscriptions status messages include information about all outputs. 
             # Outputs with the "remote output" type start at index 6.
             self._output_subscription_start_index = 6
-            self._supports_automation_user = False
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
