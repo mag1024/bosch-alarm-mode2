@@ -143,14 +143,10 @@ class Panel:
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
         self._supports_subscriptions = False
-        self._supports_command_request_area_text_cf01 = False
-        self._supports_command_request_area_text_cf03 = False
-        self._supports_command_request_output_text_cf01 = False
-        self._supports_command_request_output_text_cf03 = False
-        self._supports_command_request_point_text_cf01 = False
-        self._supports_command_request_point_text_cf03 = False
-        self._supports_command_alarm_memory_summary_cf01 = False
-        self._supports_command_alarm_memory_summary_cf02 = False
+        self._area_text_supported_format = 0
+        self._output_text_supported_format = 0
+        self._point_text_supported_format = 0
+        self._alarm_summary_supported_format = 0
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
         self._supports_automation_user = True
@@ -390,14 +386,27 @@ class Panel:
         self._supports_serial = bitmask[13] & 0x04
         self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
-        self._supports_command_request_area_text_cf01 = bitmask[7] & 0x20
-        self._supports_command_request_area_text_cf03 = bitmask[7] & 0x08
-        self._supports_command_request_output_text_cf01 = bitmask[9] & 0x40
-        self._supports_command_request_output_text_cf03 = bitmask[9] & 0x10
-        self._supports_command_request_point_text_cf01 = bitmask[11] & 0x80
-        self._supports_command_request_point_text_cf03 = bitmask[11] & 0x20
-        self._supports_command_alarm_memory_summary_cf01 = bitmask[2] & 0x20
-        self._supports_command_alarm_memory_summary_cf02 = bitmask[2] & 0x10
+
+        if bitmask[7] & 0x08:
+            self._area_text_supported_format = 3
+        elif bitmask[7] & 0x20:
+            self._area_text_supported_format = 1
+
+        if bitmask[9] & 0x10:
+            self._output_text_supported_format = 3
+        elif bitmask[9] & 0x40:
+            self._output_text_supported_format = 1
+
+        if bitmask[11] & 0x20:
+            self._point_text_supported_format = 3
+        elif bitmask[11] & 0x80:
+            self._point_text_supported_format = 1
+
+        if bitmask[11] & 0x10:
+            self._alarm_summary_supported_format = 2
+        elif bitmask[11] & 0x20:
+            self._alarm_summary_supported_format = 1
+
         self._history.init_for_panel(data[0])
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
@@ -417,8 +426,7 @@ class Panel:
     async def _load_outputs(self):
         names = await self._load_names(
             CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, 
-            self._supports_command_request_output_text_cf01, 
-            self._supports_command_request_output_text_cf03, 
+            self._output_text_supported_format,
             "OUTPUT", 1
         )
         self.outputs = {id: Output(name) for id, name in names.items() if name}
@@ -426,8 +434,7 @@ class Panel:
     async def _load_areas(self):
         names = await self._load_names(
             CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, 
-            self._supports_command_request_area_text_cf01, 
-            self._supports_command_request_area_text_cf03, 
+            self._area_text_supported_format,
             "AREA"
         )
         self.areas = {id: Area(name) for id, name in names.items()}
@@ -435,8 +442,7 @@ class Panel:
     async def _load_points(self):
         names = await self._load_names(
             CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, 
-            self._supports_command_request_point_text_cf01, 
-            self._supports_command_request_point_text_cf03, 
+            self._point_text_supported_format, 
             "POINT"
         )
         self.points = {id: Point(name) for id, name in names.items()}
@@ -481,13 +487,13 @@ class Panel:
             index += 8
         return ids
 
-    async def _load_names(self, name_cmd, config_cmd, supports_cf01, supports_cf03, type, id_size=2) -> dict[int, str]:
+    async def _load_names(self, name_cmd, config_cmd, supported_format, type, id_size=2) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
         
-        if supports_cf03:
+        if supported_format==3:
             return await self._load_names_cf03(name_cmd, enabled_ids)
 
-        if supports_cf01:
+        if supported_format==1:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
         
         # And then if CF01 isn't available, we can just generate a list of names and return that
@@ -514,9 +520,9 @@ class Panel:
         
     async def _get_alarm_status(self):
         format = None
-        if self._supports_command_alarm_memory_summary_cf02:
+        if self._alarm_summary_supported_format == 2:
             format = bytearray([0x02])
-        elif self._supports_command_alarm_memory_summary_cf01:
+        elif self._alarm_summary_supported_format == 1:
             format = bytearray()
         else:
             return
