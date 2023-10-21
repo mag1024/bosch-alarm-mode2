@@ -520,12 +520,9 @@ class Panel:
         
     async def _get_alarm_status(self):
         format = None
-        if self._alarm_summary_supported_format == 2:
-            format = bytearray([0x02])
-        elif self._alarm_summary_supported_format == 1:
-            format = bytearray()
-        else:
+        if not self._alarm_summary_supported_format:
             return
+        format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
         data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
