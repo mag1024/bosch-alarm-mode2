@@ -148,7 +148,6 @@ class Panel:
         self._supports_command_request_area_text_cf03 = False
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
-        self._supports_automation_user = True
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -345,9 +344,9 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
-        if self._supports_automation_user:
+        if self._automation_code:
             await self._authenticate_automation_user()
-        if self._supports_remote_user:
+        if self._passcode:
             await self._authenticate_remote_user()
 
     async def _basicinfo(self):
@@ -360,11 +359,6 @@ class Panel:
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
-        # Solution series uses only remote user 
-        # Amax series uses remote user + automation code
-        # Everything else uses just automation code
-        self._supports_remote_user = data[0] <= 0x24
-        self._supports_automation_user = data[0] >= 0x21
 
         # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x24:
@@ -378,6 +372,8 @@ class Panel:
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
+            # B/G series panels only require the automation code, AMAX and Solution panels require both
+            self._passcode = None
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
