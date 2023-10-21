@@ -490,10 +490,10 @@ class Panel:
     async def _load_names(self, name_cmd, config_cmd, supported_format, type, id_size=2) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
         
-        if supported_format==3:
+        if supported_format == 3:
             return await self._load_names_cf03(name_cmd, enabled_ids)
 
-        if supported_format==1:
+        if supported_format == 1:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
         
         # And then if CF01 isn't available, we can just generate a list of names and return that
