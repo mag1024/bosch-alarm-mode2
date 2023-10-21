@@ -149,6 +149,14 @@ class Panel:
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
+        if self._passcode:
+            if not self._passcode.isnumeric():
+                raise PermissionError(
+                    "The installer code should only contain numerical digits.")
+            if len(self._passcode) > 8:
+                raise PermissionError(
+                    "The installer code has a maximum length of 8 digits.")
+
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
@@ -317,12 +325,6 @@ class Panel:
                 LOG.debug("Connection timed out...")
 
     async def _authenticate_remote_user(self):
-        if not self._passcode.isnumeric():
-            raise PermissionError(
-                "Solution panels require a user code. These codes should only contain numerical digits.")
-        if len(self._passcode) > 8:
-            raise PermissionError(
-                "Solution panels require a user code. These codes have a maximum length of 8 digits.")
         try:
             creds = int(str(self._passcode).ljust(8, "F"), 16)
             creds = creds.to_bytes(4, "big")
