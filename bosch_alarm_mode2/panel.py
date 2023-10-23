@@ -350,6 +350,12 @@ class Panel:
             await self._authenticate_automation_user()
         else:
             await self._authenticate_remote_user()
+    
+    def _supported_format(self, value, masks):
+        for mask, format in masks:
+            if value & mask:
+                return format
+        return 0
 
     async def _basicinfo(self):
         try:
@@ -386,26 +392,10 @@ class Panel:
         self._supports_serial = bitmask[13] & 0x04
         self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
-
-        if bitmask[7] & 0x08:
-            self._area_text_supported_format = 3
-        elif bitmask[7] & 0x20:
-            self._area_text_supported_format = 1
-
-        if bitmask[9] & 0x10:
-            self._output_text_supported_format = 3
-        elif bitmask[9] & 0x40:
-            self._output_text_supported_format = 1
-
-        if bitmask[11] & 0x20:
-            self._point_text_supported_format = 3
-        elif bitmask[11] & 0x80:
-            self._point_text_supported_format = 1
-
-        if bitmask[11] & 0x10:
-            self._alarm_summary_supported_format = 2
-        elif bitmask[11] & 0x20:
-            self._alarm_summary_supported_format = 1
+        self._area_text_supported_format = self._supported_format(bitmask[7], ((0x08, 3), (0x20, 1)))
+        self._output_text_supported_format = self._supported_format(bitmask[9], ((0x10, 3), (0x40, 1)))
+        self._point_text_supported_format = self._supported_format(bitmask[11], ((0x20, 3), (0x80, 1)))
+        self._alarm_summary_supported_format = self._supported_format(bitmask[2], ((0x10, 2), (0x20, 1)))
 
         self._history.init_for_panel(data[0])
         self._history_cmd = (
