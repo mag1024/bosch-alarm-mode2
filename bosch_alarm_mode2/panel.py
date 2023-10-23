@@ -458,14 +458,17 @@ class Panel:
         # Subscription events received from the solution series start at output 2
         output_subscription_offset = 2
 
-        # Event code IDs get split between remote output 3 and 4
+        # Event codes get split between remote output 3 and 4
+        # These codes were taken directly from A-Link
         remote_1_code = 0x28
         remote_3_code = 0x2A
         remote_4_code = 0x62
         remote_22_code = 0x74
 
-        # Build a list of all valid event code IDs
+        # Build a list of all valid event codes
         event_codes = list(range(remote_1_code, remote_3_code+1)) + list(range(remote_4_code, remote_22_code+1))
+
+        # Map each event code to its remote output number
         event_codes = {k: v+1 for v, k in enumerate(event_codes)}
 
         # Build a list of all config locations for the various outputs
@@ -484,7 +487,7 @@ class Panel:
                 starting_offset = get_offset_from_location(prev_location)
                 data = await self._read_config(prev_location)
 
-            # Then retrieve the event code for a given location
+            # Then retrieve the event code at a given location
             current_offset = get_offset_from_location(location)
             current_event_code = data[current_offset - starting_offset]
 
