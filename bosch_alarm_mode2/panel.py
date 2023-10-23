@@ -15,6 +15,12 @@ ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
+
+def _supported_format(value, masks):
+    for mask, format in masks:
+        if value & mask:
+            return format
+    return 0
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -144,8 +150,10 @@ class Panel:
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
         self._supports_subscriptions = False
-        self._supports_command_request_area_text_cf01 = False
-        self._supports_command_request_area_text_cf03 = False
+        self._area_text_supported_format = 0
+        self._output_text_supported_format = 0
+        self._point_text_supported_format = 0
+        self._alarm_summary_supported_format = 0
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
@@ -391,8 +399,11 @@ class Panel:
         self._supports_serial = bitmask[13] & 0x04
         self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
-        self._supports_command_request_area_text_cf01 = bitmask[7] & 0x20
-        self._supports_command_request_area_text_cf03 = bitmask[7] & 0x08
+        self._area_text_supported_format = _supported_format(bitmask[7], [(0x08, 3), (0x20, 1)])
+        self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
+        self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
+        self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
+
         self._history.init_for_panel(data[0])
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
@@ -410,15 +421,27 @@ class Panel:
             self.firmware_version = 'v%d.%d' % (version, revision)
 
     async def _load_outputs(self):
-        names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
+        names = await self._load_names(
+            CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, 
+            self._output_text_supported_format,
+            "OUTPUT", 1
+        )
         self.outputs = {id: Output(name) for id, name in names.items() if name}
 
     async def _load_areas(self):
-        names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
+        names = await self._load_names(
+            CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, 
+            self._area_text_supported_format,
+            "AREA"
+        )
         self.areas = {id: Area(name) for id, name in names.items()}
 
     async def _load_points(self):
-        names = await self._load_names(CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, "POINT")
+        names = await self._load_names(
+            CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, 
+            self._point_text_supported_format, 
+            "POINT"
+        )
         self.points = {id: Point(name) for id, name in names.items()}
 
     async def _load_names_cf03(self, name_cmd, enabled_ids) -> dict[int, str]:
@@ -461,13 +484,13 @@ class Panel:
             index += 8
         return ids
 
-    async def _load_names(self, name_cmd, config_cmd, type, id_size=2) -> dict[int, str]:
+    async def _load_names(self, name_cmd, config_cmd, supported_format, type, id_size=2) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
         
-        if self._supports_command_request_area_text_cf03:
+        if supported_format == 3:
             return await self._load_names_cf03(name_cmd, enabled_ids)
 
-        if self._supports_command_request_area_text_cf01:
+        if supported_format == 1:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
         
         # And then if CF01 isn't available, we can just generate a list of names and return that
@@ -493,7 +516,11 @@ class Panel:
             response_detail = response_detail[5:]
 
     async def _get_alarm_status(self):
-        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY)
+        format = None
+        if not self._alarm_summary_supported_format:
+            return
+        format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
+        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
             count = BE_INT.int16(data, i)
@@ -503,7 +530,6 @@ class Panel:
                 # Nothing triggered, clear alarms
                 for area in self.areas.values():
                     area._set_alarm(priority, False)
-
     async def _load_entity_status(self, status_cmd, entities):
         request = bytearray()
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
