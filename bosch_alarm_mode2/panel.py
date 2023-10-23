@@ -371,6 +371,9 @@ class Panel:
             # However, subscriptions status messages include information about all outputs. 
             # Outputs with the "remote output" type start at index 6.
             self._output_subscription_start_index = 6
+            if not self._installer_code:
+                raise ValueError(
+                    "The installer code is required for Solution / AMAX panels")
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
