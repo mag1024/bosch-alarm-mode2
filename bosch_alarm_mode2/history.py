@@ -25,7 +25,6 @@ class History:
         self._events = []
         self._parser = None
         self._max_count = 0
-        self._event_id_mask = 0xFFFFFFFF
 
     @property
     def events(self):
@@ -43,9 +42,6 @@ class History:
             self._parser = SolutionHistoryParser()
         elif panel_type <= 0x24:
             self._parser = AmaxHistoryParser()
-            # AMAX panels use the first byte of the event id as a flag for the event type
-            # We need to mask that away to get a proper event id
-            self._event_id_mask = 0x00FFFFFF
         else:
             self._parser = BGHistoryParser()
 
@@ -56,7 +52,9 @@ class History:
 
     def parse_polled_events(self, event_data):
         count = event_data[0]
-        start = (BE_INT.int32(event_data, 1) & self._event_id_mask) + 1
+        # AMAX panels use the first byte of the event id as a flag for the event type
+        # Mask away the highest byte to stip this away.
+        start = (BE_INT.int32(event_data, 1) & 0x00FFFFFF) + 1
         event_data = event_data[5:]
         # Panels can have large numbers of history events, which take a very
         # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
