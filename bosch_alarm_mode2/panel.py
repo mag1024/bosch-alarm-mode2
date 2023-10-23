@@ -445,6 +445,7 @@ class Panel:
         return data_out
 
     async def _load_output_subscription_config(self):
+        # Construct a mapping from remote outputs to actual outputs on solution panels
         # Locations for various outputs in memory
         # https://csproducts.co.nz/download/20003000_manuals/2000-3000-Quick-Installer-Manual.pdf
         output_1_location = 436
@@ -452,7 +453,7 @@ class Panel:
         b308_output_1_location = 646
         b228_output_2_location = 748
 
-        # Each output takes 6 bytes in memory
+        # Each output takes 6 bytes in the config image
         output_data_size = 6
 
         # Subscription events received from the solution series start at output 2
@@ -468,8 +469,8 @@ class Panel:
         # Build a list of all valid event codes
         event_codes = list(range(remote_1_code, remote_3_code+1)) + list(range(remote_4_code, remote_22_code+1))
 
-        # Map each event code to its remote output number
-        event_codes = {k: v+1 for v, k in enumerate(event_codes)}
+        # Map each event code to its remote output number (starting at 1)
+        event_codes = {event_code: remote_output+1 for remote_output, event_code in enumerate(event_codes)}
 
         # Build a list of all config locations for the various outputs
         locations = list(range(output_1_location, output_codepad_location+1, output_data_size))
