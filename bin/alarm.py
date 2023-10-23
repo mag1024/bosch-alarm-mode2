@@ -21,7 +21,7 @@ logging.basicConfig(stream = sys.stdout,
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
-panel = Panel(host=args.host, port=args.port, passcode=args.installercode, automation_code=args.passcode)
+panel = Panel(host=args.host, port=args.port, installer_code=args.installercode, automation_code=args.passcode)
 try:
     loop.run_until_complete(panel.connect())
     panel.print()

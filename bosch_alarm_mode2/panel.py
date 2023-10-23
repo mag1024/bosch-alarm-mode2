@@ -117,11 +117,11 @@ class Output(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, passcode, automation_code):
+    def __init__(self, host, port, installer_code, automation_code):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
-        self._passcode = passcode
+        self._installer_code = installer_code
         self._automation_code = automation_code
 
         self.connection_status_observer = Observable()
@@ -149,12 +149,12 @@ class Panel:
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
-        if self._passcode:
-            if not self._passcode.isnumeric():
-                raise PermissionError(
+        if self._installer_code:
+            if not self._installer_code.isnumeric():
+                raise ValueError(
                     "The installer code should only contain numerical digits.")
-            if len(self._passcode) > 8:
-                raise PermissionError(
+            if len(self._installer_code) > 8:
+                raise ValueError(
                     "The installer code has a maximum length of 8 digits.")
 
     LOAD_BASIC_INFO = 1 << 0
@@ -241,7 +241,7 @@ class Panel:
     async def _connect(self, load_selector):
         LOG.info('Connecting to %s:%d...', self._host, self._port)
         def connection_factory(): return Connection(
-                self._passcode, self._on_status_update, self._on_disconnect)
+                self._installer_code, self._on_status_update, self._on_disconnect)
         _, connection = await asyncio.wait_for(
                 asyncio.get_running_loop().create_connection(
                     connection_factory,
@@ -326,7 +326,7 @@ class Panel:
 
     async def _authenticate_remote_user(self):
         try:
-            creds = int(str(self._passcode).ljust(8, "F"), 16)
+            creds = int(str(self._installer_code).ljust(8, "F"), 16)
             creds = creds.to_bytes(4, "big")
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
@@ -348,7 +348,7 @@ class Panel:
     async def _authenticate(self):
         if self._automation_code:
             await self._authenticate_automation_user()
-        if self._passcode:
+        if self._installer_code:
             await self._authenticate_remote_user()
 
     async def _basicinfo(self):
@@ -375,7 +375,7 @@ class Panel:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
             # B/G series panels only require the automation code, AMAX and Solution panels require both
-            self._passcode = None
+            self._installer_code = None
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
