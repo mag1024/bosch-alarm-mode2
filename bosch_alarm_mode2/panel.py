@@ -159,7 +159,7 @@ class Panel:
         self._output_text_supported_format = 0
         self._point_text_supported_format = 0
         self._alarm_summary_supported_format = 0
-        self._requires_subscription_indices = False
+        self._requires_output_mappings = False
         self._outputs_by_subscription = {}
         self._output_semaphore = asyncio.Semaphore(1)
 
@@ -377,7 +377,7 @@ class Panel:
             LOG.warning('busy flag: %d', data[13])
 
         # Solution panels have a concept of "Remote Outputs", and we need to construct a mapping for those panels
-        self._requires_subscription_indices = data[0] <= 0x21
+        self._requires_output_mappings = data[0] <= 0x21
 
         # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x24:
@@ -444,7 +444,7 @@ class Panel:
                 i = i + length
         return data_out
 
-    async def _load_output_subscription_config(self):
+    async def _load_solution_output_mappings(self):
         # Construct a mapping from remote outputs to actual outputs on solution panels
         # Locations for various outputs in memory
         # https://csproducts.co.nz/download/20003000_manuals/2000-3000-Quick-Installer-Manual.pdf
@@ -505,8 +505,8 @@ class Panel:
             "OUTPUT", 1
         )
         self.outputs = {id: Output(name) for id, name in names.items()}
-        if self._requires_subscription_indices:
-            await self._load_output_subscription_config()
+        if self._requires_output_mappings:
+            await self._load_solution_output_mappings()
         else:
             self._outputs_by_subscription = self.outputs
 
