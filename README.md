@@ -10,8 +10,9 @@ In practice, this library has only been tested with B8512G and the B5512 and the
 - Push based updates (for panels that support it)
 
 #### Authentication
-- For B and G series panels, in the "Automation / Remote App" section of panel settings set the "Automation Device" to "Mode 2", and set the "Automation Passcode" to at least 10 characters.
-- For the Solution panels, use your user code
+- For all panels, make sure that your Automation Passcode is set to a passcode that is at least 10 characters long.
+- For B and G series panels, set the "Automation Device" to "Mode 2", and use just your automation code for authentication.
+- For Solution and AMAX panels, use both your automation code and your installer code for authentication.
 
 Full documentation of the API can be requested from
 integrated.solutions@us.bosch.com.

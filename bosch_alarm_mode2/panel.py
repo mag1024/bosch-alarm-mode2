@@ -16,6 +16,12 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
 
+def _supported_format(value, masks):
+    for mask, format in masks:
+        if value & mask:
+            return format
+    return 0
+
 def get_offset_from_location(location):
     # Panel "locations" actually refer to a nibble in memory, not a byte.
     # There also seems to be a offset of 4 bytes, possibly some sort of header?
@@ -122,11 +128,12 @@ class Output(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, passcode):
+    def __init__(self, host, port, automation_code, installer_code):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
-        self._passcode = passcode
+        self._installer_code = installer_code
+        self._automation_code = automation_code
 
         self.connection_status_observer = Observable()
         self.history_observer = Observable()
@@ -148,12 +155,21 @@ class Panel:
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
         self._supports_subscriptions = False
-        self._supports_command_request_area_text_cf01 = False
-        self._supports_command_request_area_text_cf03 = False
+        self._area_text_supported_format = 0
+        self._output_text_supported_format = 0
+        self._point_text_supported_format = 0
+        self._alarm_summary_supported_format = 0
         self._requires_subscription_indices = False
         self._outputs_by_subscription = {}
         self._output_semaphore = asyncio.Semaphore(1)
-        self._supports_automation_user = True
+
+        if self._installer_code:
+            if not self._installer_code.isnumeric():
+                raise ValueError(
+                    "The installer code should only contain numerical digits.")
+            if len(self._installer_code) > 8:
+                raise ValueError(
+                    "The installer code has a maximum length of 8 digits.")
 
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -239,7 +255,7 @@ class Panel:
     async def _connect(self, load_selector):
         LOG.info('Connecting to %s:%d...', self._host, self._port)
         def connection_factory(): return Connection(
-                self._passcode, self._on_status_update, self._on_disconnect)
+                self._installer_code, self._on_status_update, self._on_disconnect)
         _, connection = await asyncio.wait_for(
                 asyncio.get_running_loop().create_connection(
                     connection_factory,
@@ -323,14 +339,8 @@ class Panel:
                 LOG.debug("Connection timed out...")
 
     async def _authenticate_remote_user(self):
-        if not self._passcode.isnumeric():
-            raise PermissionError(
-                "Solution panels require a user code. These codes should only contain numerical digits.")
-        if len(self._passcode) > 8:
-            raise PermissionError(
-                "Solution panels require a user code. These codes have a maximum length of 8 digits.")
         try:
-            creds = int(str(self._passcode).ljust(8, "F"), 16)
+            creds = int(str(self._installer_code).ljust(8, "F"), 16)
             creds = creds.to_bytes(4, "big")
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
@@ -338,7 +348,7 @@ class Panel:
 
     async def _authenticate_automation_user(self):
         creds = bytearray(b'\x01')  # automation user
-        creds.extend(map(ord, self._passcode))
+        creds.extend(map(ord, self._automation_code))
         creds.append(0x00) # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
         if result and result[0] == 0x01:
@@ -350,9 +360,9 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
-        if self._supports_automation_user:
+        if self._automation_code:
             await self._authenticate_automation_user()
-        else:
+        if self._installer_code:
             await self._authenticate_remote_user()
 
     async def _basicinfo(self):
@@ -373,10 +383,14 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
-            self._supports_automation_user = False
+            if not self._installer_code:
+                raise ValueError(
+                    "The installer code is required for Solution / AMAX panels")
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
+            # B/G series panels only require the automation code, AMAX and Solution panels require both
+            self._installer_code = None
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
@@ -389,8 +403,11 @@ class Panel:
         self._supports_serial = bitmask[13] & 0x04
         self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
-        self._supports_command_request_area_text_cf01 = bitmask[7] & 0x20
-        self._supports_command_request_area_text_cf03 = bitmask[7] & 0x08
+        self._area_text_supported_format = _supported_format(bitmask[7], [(0x08, 3), (0x20, 1)])
+        self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
+        self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
+        self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
+
         self._history.init_for_panel(data[0])
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
@@ -478,7 +495,11 @@ class Panel:
                     self._outputs_by_subscription[i + output_subscription_offset] = self.outputs[remote_output_number]
 
     async def _load_outputs(self):
-        names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
+        names = await self._load_names(
+            CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, 
+            self._output_text_supported_format,
+            "OUTPUT", 1
+        )
         self.outputs = {id: Output(name) for id, name in names.items()}
         if self._requires_subscription_indices:
             await self._load_output_subscription_config()
@@ -486,11 +507,19 @@ class Panel:
             self._outputs_by_subscription = self.outputs
 
     async def _load_areas(self):
-        names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
+        names = await self._load_names(
+            CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, 
+            self._area_text_supported_format,
+            "AREA"
+        )
         self.areas = {id: Area(name) for id, name in names.items()}
 
     async def _load_points(self):
-        names = await self._load_names(CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, "POINT")
+        names = await self._load_names(
+            CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, 
+            self._point_text_supported_format, 
+            "POINT"
+        )
         self.points = {id: Point(name) for id, name in names.items()}
 
     async def _load_names_cf03(self, name_cmd, enabled_ids) -> dict[int, str]:
@@ -533,13 +562,13 @@ class Panel:
             index += 8
         return ids
 
-    async def _load_names(self, name_cmd, config_cmd, type, id_size=2) -> dict[int, str]:
+    async def _load_names(self, name_cmd, config_cmd, supported_format, type, id_size=2) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
         
-        if self._supports_command_request_area_text_cf03:
+        if supported_format == 3:
             return await self._load_names_cf03(name_cmd, enabled_ids)
 
-        if self._supports_command_request_area_text_cf01:
+        if supported_format == 1:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
         
         # And then if CF01 isn't available, we can just generate a list of names and return that
@@ -565,7 +594,10 @@ class Panel:
             response_detail = response_detail[5:]
 
     async def _get_alarm_status(self):
-        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY)
+        if not self._alarm_summary_supported_format:
+            return
+        format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
+        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
             count = BE_INT.int16(data, i)
