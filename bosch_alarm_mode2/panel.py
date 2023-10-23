@@ -15,6 +15,11 @@ ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
+
+def get_offset_from_location(location):
+    # Panel "locations" actually refer to a nibble in memory, not a byte.
+    # There also seems to be a offset of 4 bytes, possibly some sort of header?
+    return int((location / 2) + 4)
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -145,7 +150,8 @@ class Panel:
         self._supports_subscriptions = False
         self._supports_command_request_area_text_cf01 = False
         self._supports_command_request_area_text_cf03 = False
-        self._output_subscription_start_index = 0
+        self._requires_subscription_indices = False
+        self._outputs_by_subscription = {}
         self._output_semaphore = asyncio.Semaphore(1)
         self._supports_automation_user = True
 
@@ -359,15 +365,14 @@ class Panel:
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
+
+        # Solution panels have a concept of "Remote Outputs", and we need to construct a mapping for those panels
+        self._requires_subscription_indices = data[0] <= 0x21
+
         # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
-            # The solution panels only offer control over outputs with the "remote output" type.
-            # For most commands, output 0 is the first remote output.
-            # However, subscriptions status messages include information about all outputs. 
-            # Outputs with the "remote output" type start at index 6.
-            self._output_subscription_start_index = 6
             self._supports_automation_user = False
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
@@ -390,6 +395,7 @@ class Panel:
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
                 CMD.REQUEST_RAW_HISTORY_EVENTS)
+
     async def _extended_info(self):
         if self._supports_serial:  # supports serial read
             data = await self._connection.send_command(
@@ -402,9 +408,82 @@ class Panel:
             revision = int.from_bytes(data[1:2], 'big')
             self.firmware_version = 'v%d.%d' % (version, revision)
 
+    async def _read_config(self, location):
+        data = await self._connection.send_command(CMD.READ_CONFIG_IMAGE, bytearray(get_offset_from_location(location).to_bytes(2, 'big')))
+        # skip over offset
+        data = data[2:]
+        # Config is run-length encoded, so we need to decode it
+        data_out = bytearray()
+        i = 0
+        while i < len(data):
+            length = data[i]
+            i = i + 1
+            if length >= 128:
+                length = length - 125
+                data_out.extend([data[i]] * length)
+                i = i + 1
+            else:
+                data_out.extend(data[i:i+length+1])
+                i = i + length
+        return data_out
+
+    async def _load_output_subscription_config(self):
+        # Locations for various outputs in memory
+        # https://csproducts.co.nz/download/20003000_manuals/2000-3000-Quick-Installer-Manual.pdf
+        output_1_location = 436
+        output_codepad_location = 460
+        b308_output_1_location = 646
+        b228_output_2_location = 748
+
+        # Each output takes 6 bytes in memory
+        output_data_size = 6
+
+        # Subscription events received from the solution series start at output 2
+        output_subscription_offset = 2
+
+        # Event code IDs get split between remote output 3 and 4
+        remote_1_code = 0x28
+        remote_3_code = 0x2A
+        remote_4_code = 0x62
+        remote_22_code = 0x74
+
+        # Build a list of all valid event code IDs
+        event_codes = list(range(remote_1_code, remote_3_code+1)) + list(range(remote_4_code, remote_22_code+1))
+        event_codes = {k: v+1 for v, k in enumerate(event_codes)}
+
+        # Build a list of all config locations for the various outputs
+        locations = list(range(output_1_location, output_codepad_location+1, output_data_size))
+        locations += list(range(b308_output_1_location, b228_output_2_location+1, output_data_size))
+
+        # Read config data from the panel
+        prev_location = 0
+        starting_offset = 0
+        data = bytearray()
+        for i, location in enumerate(locations):
+            # There is a limit to how many items we can read at one time
+            # So, batch up queries in sets of 30 locations at a time
+            if location - prev_location > 30:
+                prev_location = location
+                starting_offset = get_offset_from_location(prev_location)
+                data = await self._read_config(prev_location)
+
+            # Then retrieve the event code for a given location
+            current_offset = get_offset_from_location(location)
+            current_event_code = data[current_offset - starting_offset]
+
+            # And map it to an output number, and store a mapping that we can refer to later
+            if current_event_code in event_codes:
+                remote_output_number = event_codes[current_event_code]
+                if remote_output_number in self.outputs:
+                    self._outputs_by_subscription[i + output_subscription_offset] = self.outputs[remote_output_number]
+
     async def _load_outputs(self):
         names = await self._load_names(CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, "OUTPUT", 1)
-        self.outputs = {id: Output(name) for id, name in names.items() if name}
+        self.outputs = {id: Output(name) for id, name in names.items()}
+        if self._requires_subscription_indices:
+            await self._load_output_subscription_config()
+        else:
+            self._outputs_by_subscription = self.outputs
 
     async def _load_areas(self):
         names = await self._load_names(CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, "AREA")
@@ -565,9 +644,9 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
-        output_id = BE_INT.int16(data) - self._output_subscription_start_index
-        if output_id in self.outputs:
-            output_status = self.outputs[output_id].status = int(data[2] != 0)
+        output_id = BE_INT.int16(data)
+        if output_id in self._outputs_by_subscription:
+            output_status = self._outputs_by_subscription[output_id].status = int(data[2] != 0)
             LOG.debug("Output updated %d: %s" % (output_id, OUTPUT_STATUS.TEXT[output_status]))
         return 3
     

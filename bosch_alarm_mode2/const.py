@@ -177,6 +177,7 @@ class CMD:
     SET_SUBSCRIPTION = 0x5F
     # Diagnostic group
     PRODUCT_SERIAL = 0x4A
+    READ_CONFIG_IMAGE = 0xA0
 
 class PROTOCOL:
     BASIC = 0x01
