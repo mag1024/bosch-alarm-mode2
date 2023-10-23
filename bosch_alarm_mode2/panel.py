@@ -117,7 +117,7 @@ class Output(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, installer_code, automation_code):
+    def __init__(self, host, port, automation_code, installer_code):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
