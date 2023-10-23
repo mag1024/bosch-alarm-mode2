@@ -15,6 +15,12 @@ ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 ssl_context.set_ciphers('DEFAULT')
+
+def _supported_format(value, masks):
+    for mask, format in masks:
+        if value & mask:
+            return format
+    return 0
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -350,12 +356,6 @@ class Panel:
             await self._authenticate_automation_user()
         else:
             await self._authenticate_remote_user()
-    
-    def _supported_format(self, value, masks):
-        for mask, format in masks:
-            if value & mask:
-                return format
-        return 0
 
     async def _basicinfo(self):
         try:
@@ -392,10 +392,10 @@ class Panel:
         self._supports_serial = bitmask[13] & 0x04
         self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
-        self._area_text_supported_format = self._supported_format(bitmask[7], ((0x08, 3), (0x20, 1)))
-        self._output_text_supported_format = self._supported_format(bitmask[9], ((0x10, 3), (0x40, 1)))
-        self._point_text_supported_format = self._supported_format(bitmask[11], ((0x20, 3), (0x80, 1)))
-        self._alarm_summary_supported_format = self._supported_format(bitmask[2], ((0x10, 2), (0x20, 1)))
+        self._area_text_supported_format = _supported_format(bitmask[7], [(0x08, 3), (0x20, 1)])
+        self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
+        self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
+        self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
 
         self._history.init_for_panel(data[0])
         self._history_cmd = (
@@ -507,7 +507,7 @@ class Panel:
                 LOG.warning(
                     f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
             response_detail = response_detail[5:]
-        
+
     async def _get_alarm_status(self):
         format = None
         if not self._alarm_summary_supported_format:
