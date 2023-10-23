@@ -10,7 +10,7 @@ from bosch_alarm_mode2 import Panel
 cli_parser = argparse.ArgumentParser()
 cli_parser.add_argument('--host', help="panel hostname")
 cli_parser.add_argument('--port', type=int, help="panel port")
-cli_parser.add_argument('-U', '--installercode', help="Installer code")
+cli_parser.add_argument('-U', '--installer-code', help="Installer code")
 cli_parser.add_argument('-P', '--passcode', help="Automation passcode")
 
 args = cli_parser.parse_args()
@@ -21,7 +21,7 @@ logging.basicConfig(stream = sys.stdout,
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
-panel = Panel(host=args.host, port=args.port, installer_code=args.installercode, automation_code=args.passcode)
+panel = Panel(host=args.host, port=args.port, installer_code=args.installer_code, automation_code=args.passcode)
 try:
     loop.run_until_complete(panel.connect())
     panel.print()
