@@ -24,8 +24,9 @@ def _supported_format(value, masks):
 
 def get_offset_from_location(location):
     # Panel "locations" actually refer to a nibble in memory, not a byte.
-    # There also seems to be a offset of 4 bytes, possibly some sort of header?
+    # Also need to skip past the 4 byte header at the start of the config image.
     return int((location / 2) + 4)
+
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
