@@ -168,6 +168,7 @@ class Panel:
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
+    LOAD_NO_AUTH = 1 << 3
     LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
 
     async def connect(self, load_selector = LOAD_ALL):
@@ -258,9 +259,10 @@ class Panel:
         self._last_msg = datetime.now()
         self._connection = connection
         await self._basicinfo()
-        await self._authenticate()
-        LOG.debug("Authentication success!")
-        await self.load(load_selector)
+        if not load_selector & self.LOAD_NO_AUTH:
+            await self._authenticate()
+            LOG.debug("Authentication success!")
+            await self.load(load_selector)
         self.connection_status_observer._notify()
 
     def _on_disconnect(self):
@@ -354,6 +356,19 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
+        if "Solution" in self.model and not self._installer_or_user_code:
+            raise ValueError(
+                "The user code is required for Solution panels")
+        elif "AMAX" in self.model:
+            if not self._installer_or_user_code:
+                raise ValueError(
+                    "The installer code is required for AMAX panels")
+            if not self._automation_code:
+                raise ValueError(
+                    "The Automation code is required for AMAX panels")
+        elif not self._automation_code:
+            raise ValueError(
+                "The Automation code is required for B/G panels")
         if self._automation_code:
             await self._authenticate_automation_user()
         if self._installer_or_user_code:
@@ -382,15 +397,10 @@ class Panel:
             # Solution panels don't require an automation code
             if data[0] <= 0x21:
                 self._automation_code = None
-                raise ValueError(
-                    "The user code is required for Solution panels")
-            elif not self._installer_or_user_code:
-                raise ValueError(
-                    "The installer code is required for AMAX panels")
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
-            # B/G series panels only require the automation code, AMAX and Solution panels require both
+            # B/G series panels only require the automation code
             self._installer_or_user_code = None
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
