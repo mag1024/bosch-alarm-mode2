@@ -382,6 +382,9 @@ class Panel:
             if not self._installer_code:
                 raise ValueError(
                     "The installer code is required for Solution / AMAX panels")
+            # Solution panels don't require an automation code
+            if data[0] <= 0x21:
+                self._automation_code = None
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
