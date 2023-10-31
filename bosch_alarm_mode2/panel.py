@@ -377,9 +377,6 @@ class Panel:
             if not self._installer_code:
                 raise ValueError(
                     "The installer code is required for Solution / AMAX panels")
-            # Solution panels don't require an automation code
-            if data[0] <= 0x21:
-                self._automation_code = None
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
@@ -597,6 +594,9 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
+        # Solution panels send us events with different output IDs.
+        # This means we can't actually rely on the data from the
+        # subscription event and instead need to poll for output status
         asyncio.create_task(self._load_output_status())
         return 3
     
