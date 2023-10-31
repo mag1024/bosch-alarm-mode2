@@ -356,9 +356,10 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
-        if "Solution" in self.model and not self._installer_or_user_code:
-            raise ValueError(
-                "The user code is required for Solution panels")
+        if "Solution" in self.model:
+            if not self._installer_or_user_code:
+                raise ValueError(
+                    "The user code is required for Solution panels")
         elif "AMAX" in self.model:
             if not self._installer_or_user_code:
                 raise ValueError(
