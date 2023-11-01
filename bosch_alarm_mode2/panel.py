@@ -21,6 +21,7 @@ def _supported_format(value, masks):
         if value & mask:
             return format
     return 0
+
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -154,7 +155,6 @@ class Panel:
         self._output_text_supported_format = 0
         self._point_text_supported_format = 0
         self._alarm_summary_supported_format = 0
-        self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
     LOAD_BASIC_INFO = 1 << 0
@@ -400,11 +400,6 @@ class Panel:
         if data[0] <= 0x24:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
-            # The solution panels only offer control over outputs with the "remote output" type.
-            # For most commands, output 0 is the first remote output.
-            # However, subscriptions status messages include information about all outputs. 
-            # Outputs with the "remote output" type start at index 6.
-            self._output_subscription_start_index = 6
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
@@ -429,6 +424,7 @@ class Panel:
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
                 CMD.REQUEST_RAW_HISTORY_EVENTS)
+
     async def _extended_info(self):
         if self._supports_serial:  # supports serial read
             data = await self._connection.send_command(
@@ -447,7 +443,7 @@ class Panel:
             self._output_text_supported_format,
             "OUTPUT", 1
         )
-        self.outputs = {id: Output(name) for id, name in names.items() if name}
+        self.outputs = {id: Output(name) for id, name in names.items()}
 
     async def _load_areas(self):
         names = await self._load_names(
@@ -537,7 +533,6 @@ class Panel:
             response_detail = response_detail[5:]
 
     async def _get_alarm_status(self):
-        format = None
         if not self._alarm_summary_supported_format:
             return
         format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
@@ -551,6 +546,7 @@ class Panel:
                 # Nothing triggered, clear alarms
                 for area in self.areas.values():
                     area._set_alarm(priority, False)
+
     async def _load_entity_status(self, status_cmd, entities):
         request = bytearray()
         for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
@@ -619,10 +615,10 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
-        output_id = BE_INT.int16(data) - self._output_subscription_start_index
-        if output_id in self.outputs:
-            output_status = self.outputs[output_id].status = int(data[2] != 0)
-            LOG.debug("Output updated %d: %s" % (output_id, OUTPUT_STATUS.TEXT[output_status]))
+        # Solution panels send events with output ids that don't match those
+        # used by the rest of the commands. This means we can't actually rely 
+        # on the data from the subscription event and instead need to poll for output status
+        asyncio.create_task(self._load_output_status())
         return 3
     
     def _point_status_consumer(self, data) -> int:
