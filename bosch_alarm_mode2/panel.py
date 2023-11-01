@@ -123,11 +123,11 @@ class Output(PanelEntity):
 class Panel:
     """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
 
-    def __init__(self, host, port, automation_code, installer_code):
+    def __init__(self, host, port, automation_code, installer_or_user_code):
         LOG.debug("Panel created")
         self._host = host
         self._port = port
-        self._installer_code = installer_code
+        self._installer_or_user_code = installer_or_user_code
         self._automation_code = automation_code
 
         self.connection_status_observer = Observable()
@@ -157,17 +157,10 @@ class Panel:
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
-        if self._installer_code:
-            if not self._installer_code.isnumeric():
-                raise ValueError(
-                    "The installer code should only contain numerical digits.")
-            if len(self._installer_code) > 8:
-                raise ValueError(
-                    "The installer code has a maximum length of 8 digits.")
-
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
+    LOAD_NO_AUTH = 1 << 3
     LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
 
     async def connect(self, load_selector = LOAD_ALL):
@@ -249,7 +242,7 @@ class Panel:
     async def _connect(self, load_selector):
         LOG.info('Connecting to %s:%d...', self._host, self._port)
         def connection_factory(): return Connection(
-                self._installer_code, self._on_status_update, self._on_disconnect)
+                self._installer_or_user_code, self._on_status_update, self._on_disconnect)
         _, connection = await asyncio.wait_for(
                 asyncio.get_running_loop().create_connection(
                     connection_factory,
@@ -258,9 +251,10 @@ class Panel:
         self._last_msg = datetime.now()
         self._connection = connection
         await self._basicinfo()
-        await self._authenticate()
-        LOG.debug("Authentication success!")
-        await self.load(load_selector)
+        if not load_selector & self.LOAD_NO_AUTH:
+            await self._authenticate()
+            LOG.debug("Authentication success!")
+            await self.load(load_selector)
         self.connection_status_observer._notify()
 
     def _on_disconnect(self):
@@ -334,7 +328,7 @@ class Panel:
 
     async def _authenticate_remote_user(self):
         try:
-            creds = int(str(self._installer_code).ljust(8, "F"), 16)
+            creds = int(str(self._installer_or_user_code).ljust(8, "F"), 16)
             creds = creds.to_bytes(4, "big")
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
@@ -354,9 +348,41 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
+        if "Solution" in self.model:
+            if not self._installer_or_user_code:
+                raise ValueError(
+                    "The user code is required for Solution panels")
+            if not self._installer_or_user_code.isnumeric():
+                raise ValueError(
+                    "The user code should only contain numerical digits.")
+            if len(self._installer_or_user_code) > 8:
+                raise ValueError(
+                    "The user code has a maximum length of 8 digits.")
+            # Solution panels don't require an automation code
+            self._automation_code = None
+        elif "AMAX" in self.model:
+            if not self._installer_or_user_code:
+                raise ValueError(
+                    "The installer code is required for AMAX panels")
+            if not self._automation_code:
+                raise ValueError(
+                    "The Automation code is required for AMAX panels")
+            if not self._installer_or_user_code.isnumeric():
+                raise ValueError(
+                    "The installer code should only contain numerical digits.")
+            if len(self._installer_or_user_code) > 8:
+                raise ValueError(
+                    "The installer code has a maximum length of 8 digits.")
+        else:
+            if not self._automation_code:
+                raise ValueError(
+                    "The Automation code is required for B/G panels")
+            # B/G series panels only require the automation code
+            self._installer_or_user_code = None
+            
         if self._automation_code:
             await self._authenticate_automation_user()
-        if self._installer_code:
+        if self._installer_or_user_code:
             await self._authenticate_remote_user()
 
     async def _basicinfo(self):
@@ -379,14 +405,9 @@ class Panel:
             # However, subscriptions status messages include information about all outputs. 
             # Outputs with the "remote output" type start at index 6.
             self._output_subscription_start_index = 6
-            if not self._installer_code:
-                raise ValueError(
-                    "The installer code is required for Solution / AMAX panels")
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
-            # B/G series panels only require the automation code, AMAX and Solution panels require both
-            self._installer_code = None
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
