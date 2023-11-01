@@ -594,9 +594,9 @@ class Panel:
         return 5
 
     def _output_status_consumer(self, data) -> int:
-        # Solution panels send us events with different output IDs.
-        # This means we can't actually rely on the data from the
-        # subscription event and instead need to poll for output status
+        # Solution panels send events with output ids that don't match those
+        # used by the rest of the commands. This means we can't actually rely 
+        # on the data from the subscription event and instead need to poll for output status
         asyncio.create_task(self._load_output_status())
         return 3
     
