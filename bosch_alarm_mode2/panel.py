@@ -157,11 +157,10 @@ class Panel:
         self._alarm_summary_supported_format = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
-    LOAD_BASIC_INFO = 1 << 0
+    LOAD_EXTENDED_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
-    LOAD_NO_AUTH = 1 << 3
-    LOAD_ALL = LOAD_BASIC_INFO | LOAD_ENTITIES | LOAD_STATUS
+    LOAD_ALL = LOAD_EXTENDED_INFO | LOAD_ENTITIES | LOAD_STATUS
 
     async def connect(self, load_selector = LOAD_ALL):
         loop = asyncio.get_running_loop()
@@ -169,7 +168,7 @@ class Panel:
         await self._connect(load_selector)
 
     async def load(self, load_selector):
-        if load_selector & self.LOAD_BASIC_INFO:
+        if load_selector & self.LOAD_EXTENDED_INFO:
             await self._extended_info()
         if load_selector & self.LOAD_ENTITIES:
             await self._load_areas()
@@ -251,7 +250,7 @@ class Panel:
         self._last_msg = datetime.now()
         self._connection = connection
         await self._basicinfo()
-        if not load_selector & self.LOAD_NO_AUTH:
+        if load_selector:
             await self._authenticate()
             LOG.debug("Authentication success!")
             await self.load(load_selector)
