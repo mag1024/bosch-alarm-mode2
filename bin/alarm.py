@@ -10,7 +10,7 @@ from bosch_alarm_mode2 import Panel
 cli_parser = argparse.ArgumentParser()
 cli_parser.add_argument('--host', help="panel hostname")
 cli_parser.add_argument('--port', type=int, help="panel port")
-cli_parser.add_argument('-U', '--installer-or-user-code', help="Installer code")
+cli_parser.add_argument('-U', '--installer-or-user-code', help="Installer or User code")
 cli_parser.add_argument('-A', '--automation-code', help="Automation passcode")
 
 args = cli_parser.parse_args()
