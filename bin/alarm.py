@@ -24,7 +24,7 @@ asyncio.set_event_loop(loop)
 panel = Panel(
     host=args.host, port=args.port, 
     automation_code=args.automation_code, 
-    installer_or_user_code=args.installer_code)
+    installer_or_user_code=args.installer_or_user_code)
 try:
     loop.run_until_complete(panel.connect())
     panel.print()
