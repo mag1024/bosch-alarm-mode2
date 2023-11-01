@@ -360,6 +360,8 @@ class Panel:
             if not self._installer_or_user_code:
                 raise ValueError(
                     "The user code is required for Solution panels")
+            # Solution panels don't require an automation code
+            self._automation_code = None
         elif "AMAX" in self.model:
             if not self._installer_or_user_code:
                 raise ValueError(
@@ -367,9 +369,12 @@ class Panel:
             if not self._automation_code:
                 raise ValueError(
                     "The Automation code is required for AMAX panels")
-        elif not self._automation_code:
-            raise ValueError(
-                "The Automation code is required for B/G panels")
+        else:
+            if not self._automation_code:
+                raise ValueError(
+                    "The Automation code is required for B/G panels")
+            # B/G series panels only require the automation code
+            self._installer_or_user_code = None
         if self._automation_code:
             await self._authenticate_automation_user()
         if self._installer_or_user_code:
@@ -395,14 +400,9 @@ class Panel:
             # However, subscriptions status messages include information about all outputs. 
             # Outputs with the "remote output" type start at index 6.
             self._output_subscription_start_index = 6
-            # Solution panels don't require an automation code
-            if data[0] <= 0x21:
-                self._automation_code = None
         else:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
-            # B/G series panels only require the automation code
-            self._installer_or_user_code = None
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b'\0')
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
