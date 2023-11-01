@@ -157,14 +157,6 @@ class Panel:
         self._output_subscription_start_index = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
-        if self._installer_or_user_code:
-            if not self._installer_or_user_code.isnumeric():
-                raise ValueError(
-                    "The installer / user code should only contain numerical digits.")
-            if len(self._installer_or_user_code) > 8:
-                raise ValueError(
-                    "The installer / user code has a maximum length of 8 digits.")
-
     LOAD_BASIC_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
     LOAD_STATUS = 1 << 2
@@ -360,6 +352,12 @@ class Panel:
             if not self._installer_or_user_code:
                 raise ValueError(
                     "The user code is required for Solution panels")
+            if not self._installer_or_user_code.isnumeric():
+                raise ValueError(
+                    "The user code should only contain numerical digits.")
+            if len(self._installer_or_user_code) > 8:
+                raise ValueError(
+                    "The user code has a maximum length of 8 digits.")
             # Solution panels don't require an automation code
             self._automation_code = None
         elif "AMAX" in self.model:
@@ -369,12 +367,19 @@ class Panel:
             if not self._automation_code:
                 raise ValueError(
                     "The Automation code is required for AMAX panels")
+            if not self._installer_or_user_code.isnumeric():
+                raise ValueError(
+                    "The installer code should only contain numerical digits.")
+            if len(self._installer_or_user_code) > 8:
+                raise ValueError(
+                    "The installer code has a maximum length of 8 digits.")
         else:
             if not self._automation_code:
                 raise ValueError(
                     "The Automation code is required for B/G panels")
             # B/G series panels only require the automation code
             self._installer_or_user_code = None
+            
         if self._automation_code:
             await self._authenticate_automation_user()
         if self._installer_or_user_code:
