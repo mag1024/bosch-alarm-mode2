@@ -246,7 +246,7 @@ class Panel:
                 asyncio.get_running_loop().create_connection(
                     connection_factory,
                     host=self._host, port=self._port, ssl=ssl_context),
-                timeout=100)
+                timeout=30)
         self._last_msg = datetime.now()
         self._connection = connection
         await self._basicinfo()
