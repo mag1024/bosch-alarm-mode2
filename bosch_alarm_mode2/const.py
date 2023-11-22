@@ -147,6 +147,13 @@ ALARM_MEMORY_PRIORITIES = {
     0x0A: "Fire Alarm"
 }
 
+ALARM_PANEL_FAULTS = {
+    0x0002: "Phone Line Failure",
+    0x0008: "Battery Low",
+    0x0010: "Battery Missing",
+    0x0020: "AC Failure"
+}
+
 class CMD:
     # Unauthenticated commands
     WHAT_ARE_YOU = 0x01

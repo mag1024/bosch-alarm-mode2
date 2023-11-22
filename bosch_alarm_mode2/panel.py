@@ -133,6 +133,7 @@ class Panel:
 
         self.connection_status_observer = Observable()
         self.history_observer = Observable()
+        self.status_observer = Observable()
         self._connection = None
         self._monitor_connection_task = None
         self._last_msg = None
@@ -142,6 +143,7 @@ class Panel:
         self.protocol_version = None
         self.firmware_version = None
         self.serial_number = None
+        self._faults = 0
         self._history = History()
         self._history_cmd = None
         self.areas = {}
@@ -179,6 +181,7 @@ class Panel:
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
             await self._load_output_status()
             await self._load_history()
+            await self._load_panel_status()
             if self._supports_subscriptions:
                 await self._subscribe()
             else:
@@ -225,6 +228,9 @@ class Panel:
         if self.firmware_version: print('Firmware version:', self.firmware_version)
         if self.protocol_version: print('Protocol version:', self.protocol_version)
         if self.serial_number: print('Serial number:', self.serial_number)
+        if self._faults: 
+            print('Faults:')
+            print(*self.panel_faults, sep="\n")
         if self.areas:
             print('Areas:')
             print(self.areas)
@@ -305,6 +311,7 @@ class Panel:
                 await self._load_output_status()
                 await self._get_alarm_status()
                 await self._load_history()
+                await self._load_panel_status()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -435,6 +442,24 @@ class Panel:
             version = data[0]
             revision = int.from_bytes(data[1:2], 'big')
             self.firmware_version = 'v%d.%d' % (version, revision)
+
+    def _update_panel_faults(self, faults):
+        self._faults = faults
+        self.status_observer._notify()
+
+    @property
+    def panel_faults(self) -> [str]:
+        faults = []
+        for mask, fault in ALARM_PANEL_FAULTS.items():
+            if self._faults & mask:
+                faults.append(fault)
+        return faults
+
+    async def _load_panel_status(self):
+        if self._supports_status:
+            data = await self._connection.send_command(
+                CMD.REQUEST_PANEL_SYSTEM_STATUS)
+            self._update_panel_faults(BE_INT.int16(data,5))
 
     async def _load_outputs(self):
         names = await self._load_names(
@@ -642,6 +667,10 @@ class Panel:
         self.history_observer._notify()
         return r
 
+    def _panel_status_consumer(self, data) -> int:
+        r = self._update_panel_faults(BE_INT.int16(data,1))
+        return r
+
     def _on_status_update(self, data):
         CONSUMERS = {
             0x00: lambda data: 0,  # heartbeat
@@ -651,6 +680,7 @@ class Panel:
             0x05: self._area_ready_consumer,
             0x06: self._output_status_consumer,
             0x07: self._point_status_consumer,
+            0x10: self._panel_status_consumer
         }
         pos = 0
         while pos < len(data):
