@@ -177,6 +177,8 @@ class CMD:
     SET_SUBSCRIPTION = 0x5F
     # Diagnostic group
     PRODUCT_SERIAL = 0x4A
+    SET_DATE_TIME = 0x11
+    REQUEST_DATE_TIME = 0x12
 
 class PROTOCOL:
     BASIC = 0x01
