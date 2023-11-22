@@ -133,7 +133,7 @@ class Panel:
 
         self.connection_status_observer = Observable()
         self.history_observer = Observable()
-        self.status_observer = Observable()
+        self.faults_observer = Observable()
         self._connection = None
         self._monitor_connection_task = None
         self._last_msg = None
@@ -445,7 +445,7 @@ class Panel:
 
     def _set_panel_faults(self, faults):
         self._faults = faults
-        self.status_observer._notify()
+        self.faults_observer._notify()
 
     @property
     def panel_faults(self) -> [str]:
