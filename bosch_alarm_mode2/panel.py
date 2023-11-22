@@ -443,7 +443,7 @@ class Panel:
             revision = int.from_bytes(data[1:2], 'big')
             self.firmware_version = 'v%d.%d' % (version, revision)
 
-    def _update_panel_faults(self, faults):
+    def _set_panel_faults(self, faults):
         self._faults = faults
         self.status_observer._notify()
 
@@ -459,7 +459,7 @@ class Panel:
         if self._supports_status:
             data = await self._connection.send_command(
                 CMD.REQUEST_PANEL_SYSTEM_STATUS)
-            self._update_panel_faults(BE_INT.int16(data,5))
+            self._set_panel_faults(BE_INT.int16(data,5))
 
     async def _load_outputs(self):
         names = await self._load_names(
@@ -668,7 +668,7 @@ class Panel:
         return r
 
     def _panel_status_consumer(self, data) -> int:
-        r = self._update_panel_faults(BE_INT.int16(data,1))
+        r = self._set_panel_faults(BE_INT.int16(data,1))
         return r
 
     def _on_status_update(self, data):
