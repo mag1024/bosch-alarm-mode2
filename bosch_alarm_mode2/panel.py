@@ -424,6 +424,19 @@ class Panel:
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
                 CMD.REQUEST_RAW_HISTORY_EVENTS)
 
+    async def set_panel_date(self, date: datetime):
+        year = date.year
+        if year < 2010 or year > 2037:
+            raise ValueError("Bosch alarm panels only support years between 2010 and 2037")
+        year = year - 2000
+        await self._connection.send_command(
+                CMD.SET_DATE_TIME, bytearray[date.month, date.day, year, date.hour, date.minute])
+
+    async def get_panel_date(self) -> datetime:
+        data = await self._connection.send_command(
+                CMD.REQUEST_DATE_TIME)
+        return datetime(data[2] + 2000, data[0], data[1], data[3], data[4])
+
     async def _extended_info(self):
         if self._supports_serial:  # supports serial read
             data = await self._connection.send_command(
