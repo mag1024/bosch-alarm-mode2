@@ -608,7 +608,7 @@ class Panel:
     async def _subscribe(self):
         IGNORE = b'\x00'
         SUBSCRIBE = b'\x01'
-        data = bytearray(self._set_subscription_supported_format) # format
+        data = bytearray([self._set_subscription_supported_format]) # format
         data += SUBSCRIBE # confidence / heartbeat
         data += SUBSCRIBE # event mem
         data += SUBSCRIBE # event log
@@ -672,6 +672,10 @@ class Panel:
     def _event_history_consumer(self, data) -> int:
         r = self._history.parse_subscription_event(data)
         self.history_observer._notify()
+        # Some panels don't support the subscription for panel status
+        # Since the panel creates history events for most faults
+        # we can just update faults when we get a history event.
+        asyncio.create_task(self._load_faults())
         return r
 
     def _panel_status_consumer(self, data) -> int:
