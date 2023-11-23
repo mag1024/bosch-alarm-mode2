@@ -148,19 +148,18 @@ ALARM_MEMORY_PRIORITIES = {
 }
 
 ALARM_PANEL_FAULTS = {
-    0x8000: "Log threshold",
-    0x4000: "Log overflow",
-    0x2000: "Point bus fail since RPS hang up",
-    0x0400: "Fail to call RPS since RPS hang up",
-    0x0200: "User code tamper since RPS hang up",
-    0x0100: "SDI fail since RPS hang up",
-    0x0080: "Communication fail since RPS hang up",
-    0x0020: "AC fail",
-    0x0010: "Battery missing",
-    0x0008: "Battery low",
-    0x0004: "Parameter CRC fail in PIF",
-    0x0002: "Phone line failure"
-    
+    (1 << 1): "Phone line failure",
+    (1 << 2): "Parameter CRC fail in PIF",
+    (1 << 3): "Battery low",
+    (1 << 4): "Battery missing",
+    (1 << 5): "AC fail",
+    (1 << 7): "Communication fail since RPS hang up",
+    (1 << 8): "SDI fail since RPS hang up",
+    (1 << 9): "User code tamper since RPS hang up",
+    (1 << 10): "Fail to call RPS since RPS hang up",
+    (1 << 13): "Point bus fail since RPS hang up",
+    (1 << 14): "Log overflow",
+    (1 << 15): "Log threshold"
 }
 
 class CMD:

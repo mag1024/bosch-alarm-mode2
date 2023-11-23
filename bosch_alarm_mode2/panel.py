@@ -22,6 +22,12 @@ def _supported_format(value, masks):
             return format
     return 0
 
+def _supported_format_multiple(masks):
+    for value, mask, format in masks:
+        if value & mask:
+            return format
+    return 0
+
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -143,7 +149,7 @@ class Panel:
         self.protocol_version = None
         self.firmware_version = None
         self.serial_number = None
-        self._faults = 0
+        self._faults_bitmap = 0
         self._history = History()
         self._history_cmd = None
         self.areas = {}
@@ -153,6 +159,7 @@ class Panel:
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
         self._supports_subscriptions = False
+        self._set_subscription_supported_format = 0
         self._area_text_supported_format = 0
         self._output_text_supported_format = 0
         self._point_text_supported_format = 0
@@ -181,7 +188,7 @@ class Panel:
             await self._load_entity_status(CMD.POINT_STATUS, self.points)
             await self._load_output_status()
             await self._load_history()
-            await self._load_panel_status()
+            await self._load_faults()
             if self._supports_subscriptions:
                 await self._subscribe()
             else:
@@ -228,7 +235,7 @@ class Panel:
         if self.firmware_version: print('Firmware version:', self.firmware_version)
         if self.protocol_version: print('Protocol version:', self.protocol_version)
         if self.serial_number: print('Serial number:', self.serial_number)
-        if self._faults: 
+        if self._faults_bitmap: 
             print('Faults:')
             print(*self.panel_faults, sep="\n")
         if self.areas:
@@ -311,7 +318,7 @@ class Panel:
                 await self._load_output_status()
                 await self._get_alarm_status()
                 await self._load_history()
-                await self._load_panel_status()
+                await self._load_faults()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -425,6 +432,7 @@ class Panel:
         self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
         self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
+        self._set_subscription_supported_format = _supported_format_multiple([(bitmask[24], 0x40, 2), (bitmask[16], 0x20, 1)])
 
         self._history.init_for_panel(data[0])
         self._history_cmd = (
@@ -444,18 +452,14 @@ class Panel:
             self.firmware_version = 'v%d.%d' % (version, revision)
 
     def _set_panel_faults(self, faults):
-        self._faults = faults
+        self._faults_bitmap = faults
         self.faults_observer._notify()
 
     @property
     def panel_faults(self) -> [str]:
-        faults = []
-        for mask, fault in ALARM_PANEL_FAULTS.items():
-            if self._faults & mask:
-                faults.append(fault)
-        return faults
+        return [fault for mask, fault in ALARM_PANEL_FAULTS.items() if self._faults_bitmap & mask]
 
-    async def _load_panel_status(self):
+    async def _load_faults(self):
         if self._supports_status:
             data = await self._connection.send_command(
                 CMD.REQUEST_PANEL_SYSTEM_STATUS)
@@ -604,7 +608,7 @@ class Panel:
     async def _subscribe(self):
         IGNORE = b'\x00'
         SUBSCRIBE = b'\x01'
-        data = bytearray(b'\x01') # format
+        data = bytearray(self._set_subscription_supported_format) # format
         data += SUBSCRIBE # confidence / heartbeat
         data += SUBSCRIBE # event mem
         data += SUBSCRIBE # event log
@@ -614,7 +618,10 @@ class Panel:
         data += SUBSCRIBE # output status
         data += SUBSCRIBE # point status
         data += IGNORE    # door status
-        data += IGNORE    # unused
+        data += IGNORE    # walk test state (unused)
+        if self._set_subscription_supported_format == 2:
+            data += SUBSCRIBE # panel system status
+            data += IGNORE    # wireless learn mode state (unused)
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
     def _area_on_off_consumer(self, data) -> int:
@@ -668,8 +675,8 @@ class Panel:
         return r
 
     def _panel_status_consumer(self, data) -> int:
-        r = self._set_panel_faults(BE_INT.int16(data,1))
-        return r
+        self._set_panel_faults(BE_INT.int16(data,1))
+        return 6
 
     def _on_status_update(self, data):
         CONSUMERS = {
