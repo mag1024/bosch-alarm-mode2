@@ -631,6 +631,8 @@ class Panel:
         # Retrieve panel history, as it is possible that a panel may have been armed during 
         # initialisation, and history can not be retrived when a panel is armed.
         asyncio.create_task(self._load_history())
+        # Some panels rely on history updates to update faults, so we need to update faults as well.
+        asyncio.create_task(self._load_faults())
         return 3
 
     def _area_ready_consumer(self, data) -> int:
