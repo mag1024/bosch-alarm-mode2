@@ -673,7 +673,7 @@ class Panel:
         return r
 
     def _panel_status_consumer(self, data) -> int:
-        self._set_panel_faults(BE_INT.int16(data,1))
+        self._set_panel_faults(BE_INT.int16(data, 1))
         return 6
 
     def _on_status_update(self, data):
