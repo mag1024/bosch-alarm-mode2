@@ -152,7 +152,6 @@ class Panel:
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
-        self._supports_subscriptions = False
         self._set_subscription_supported_format = 0
         self._area_text_supported_format = 0
         self._output_text_supported_format = 0
@@ -179,7 +178,7 @@ class Panel:
             await self._load_outputs()
         if load_selector & self.LOAD_STATUS:
             await self._load_status()
-            if self._supports_subscriptions:
+            if self._set_subscription_supported_format:
                 await self._subscribe()
             else:
                 loop = asyncio.get_running_loop()
