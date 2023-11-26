@@ -22,12 +22,6 @@ def _supported_format(value, masks):
             return format
     return 0
 
-def _supported_format_multiple(masks):
-    for value, mask, format in masks:
-        if value & mask:
-            return format
-    return 0
-
 class PanelEntity:
     def __init__(self, name, status):
         self.name = name
@@ -184,11 +178,7 @@ class Panel:
             await self._load_points()
             await self._load_outputs()
         if load_selector & self.LOAD_STATUS:
-            await self._load_entity_status(CMD.AREA_STATUS, self.areas)
-            await self._load_entity_status(CMD.POINT_STATUS, self.points)
-            await self._load_output_status()
-            await self._load_history()
-            await self._load_faults()
+            await self._load_status()
             if self._supports_subscriptions:
                 await self._subscribe()
             else:
@@ -281,6 +271,14 @@ class Panel:
             self._poll_task.cancel()
             self._poll_task = None
 
+    async def _load_status(self):
+        await self._load_entity_status(CMD.AREA_STATUS, self.areas)
+        await self._load_entity_status(CMD.POINT_STATUS, self.points)
+        await self._load_output_status()
+        await self._load_alarm_status()
+        await self._load_history()
+        await self._load_faults()
+
     async def _load_history(self):
         # Don't retrieve history when armed, as panels do not support this.
         if any(area.is_armed() for area in self.areas.values()):
@@ -313,12 +311,7 @@ class Panel:
         while True:
             try:
                 await asyncio.sleep(1)
-                await self._load_entity_status(CMD.AREA_STATUS, self.areas)
-                await self._load_entity_status(CMD.POINT_STATUS, self.points)
-                await self._load_output_status()
-                await self._get_alarm_status()
-                await self._load_history()
-                await self._load_faults()
+                await self._load_status()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -432,7 +425,7 @@ class Panel:
         self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
         self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
-        self._set_subscription_supported_format = _supported_format_multiple([(bitmask[24], 0x40, 2), (bitmask[16], 0x20, 1)])
+        self._set_subscription_supported_format = max(_supported_format(bitmask[24],[(0x40, 2)]), _supported_format(bitmask[16], [(0x20, 1)]))
 
         self._history.init_for_panel(data[0])
         self._history_cmd = (
@@ -461,9 +454,8 @@ class Panel:
 
     async def _load_faults(self):
         if self._supports_status:
-            data = await self._connection.send_command(
-                CMD.REQUEST_PANEL_SYSTEM_STATUS)
-            self._set_panel_faults(BE_INT.int16(data,5))
+            data = await self._connection.send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
+            self._set_panel_faults(BE_INT.int16(data, 5))
 
     async def _load_outputs(self):
         names = await self._load_names(
@@ -560,7 +552,7 @@ class Panel:
                     f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
             response_detail = response_detail[5:]
 
-    async def _get_alarm_status(self):
+    async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
         format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
