@@ -147,6 +147,21 @@ ALARM_MEMORY_PRIORITIES = {
     0x0A: "Fire Alarm"
 }
 
+ALARM_PANEL_FAULTS = {
+    (1 << 1): "Phone line failure",
+    (1 << 2): "Parameter CRC fail in PIF",
+    (1 << 3): "Battery low",
+    (1 << 4): "Battery missing",
+    (1 << 5): "AC fail",
+    (1 << 7): "Communication fail since RPS hang up",
+    (1 << 8): "SDI fail since RPS hang up",
+    (1 << 9): "User code tamper since RPS hang up",
+    (1 << 10): "Fail to call RPS since RPS hang up",
+    (1 << 13): "Point bus fail since RPS hang up",
+    (1 << 14): "Log overflow",
+    (1 << 15): "Log threshold"
+}
+
 class CMD:
     # Unauthenticated commands
     WHAT_ARE_YOU = 0x01

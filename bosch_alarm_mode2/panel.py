@@ -133,6 +133,7 @@ class Panel:
 
         self.connection_status_observer = Observable()
         self.history_observer = Observable()
+        self.faults_observer = Observable()
         self._connection = None
         self._monitor_connection_task = None
         self._last_msg = None
@@ -142,6 +143,7 @@ class Panel:
         self.protocol_version = None
         self.firmware_version = None
         self.serial_number = None
+        self._faults_bitmap = 0
         self._history = History()
         self._history_cmd = None
         self.areas = {}
@@ -150,7 +152,7 @@ class Panel:
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
-        self._supports_subscriptions = False
+        self._set_subscription_supported_format = 0
         self._area_text_supported_format = 0
         self._output_text_supported_format = 0
         self._point_text_supported_format = 0
@@ -175,11 +177,8 @@ class Panel:
             await self._load_points()
             await self._load_outputs()
         if load_selector & self.LOAD_STATUS:
-            await self._load_entity_status(CMD.AREA_STATUS, self.areas)
-            await self._load_entity_status(CMD.POINT_STATUS, self.points)
-            await self._load_output_status()
-            await self._load_history()
-            if self._supports_subscriptions:
+            await self._load_status()
+            if self._set_subscription_supported_format:
                 await self._subscribe()
             else:
                 loop = asyncio.get_running_loop()
@@ -225,6 +224,9 @@ class Panel:
         if self.firmware_version: print('Firmware version:', self.firmware_version)
         if self.protocol_version: print('Protocol version:', self.protocol_version)
         if self.serial_number: print('Serial number:', self.serial_number)
+        if self._faults_bitmap: 
+            print('Faults:')
+            print(*self.panel_faults, sep="\n")
         if self.areas:
             print('Areas:')
             print(self.areas)
@@ -268,6 +270,14 @@ class Panel:
             self._poll_task.cancel()
             self._poll_task = None
 
+    async def _load_status(self):
+        await self._load_entity_status(CMD.AREA_STATUS, self.areas)
+        await self._load_entity_status(CMD.POINT_STATUS, self.points)
+        await self._load_output_status()
+        await self._load_alarm_status()
+        await self._load_history()
+        await self._load_faults()
+
     async def _load_history(self):
         # Don't retrieve history when armed, as panels do not support this.
         if any(area.is_armed() for area in self.areas.values()):
@@ -300,11 +310,7 @@ class Panel:
         while True:
             try:
                 await asyncio.sleep(1)
-                await self._load_entity_status(CMD.AREA_STATUS, self.areas)
-                await self._load_entity_status(CMD.POINT_STATUS, self.points)
-                await self._load_output_status()
-                await self._get_alarm_status()
-                await self._load_history()
+                await self._load_status()
                 self._last_msg = datetime.now()
             except asyncio.exceptions.CancelledError:
                 raise
@@ -418,6 +424,7 @@ class Panel:
         self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
         self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
+        self._set_subscription_supported_format = max(_supported_format(bitmask[24],[(0x40, 2)]), _supported_format(bitmask[16], [(0x20, 1)]))
 
         self._history.init_for_panel(data[0])
         self._history_cmd = (
@@ -448,6 +455,19 @@ class Panel:
             version = data[0]
             revision = int.from_bytes(data[1:2], 'big')
             self.firmware_version = 'v%d.%d' % (version, revision)
+
+    def _set_panel_faults(self, faults):
+        self._faults_bitmap = faults
+        self.faults_observer._notify()
+
+    @property
+    def panel_faults(self) -> [str]:
+        return [fault for mask, fault in ALARM_PANEL_FAULTS.items() if self._faults_bitmap & mask]
+
+    async def _load_faults(self):
+        if self._supports_status:
+            data = await self._connection.send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
+            self._set_panel_faults(BE_INT.int16(data, 5))
 
     async def _load_outputs(self):
         names = await self._load_names(
@@ -544,7 +564,7 @@ class Panel:
                     f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
             response_detail = response_detail[5:]
 
-    async def _get_alarm_status(self):
+    async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
         format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
@@ -592,7 +612,7 @@ class Panel:
     async def _subscribe(self):
         IGNORE = b'\x00'
         SUBSCRIBE = b'\x01'
-        data = bytearray(b'\x01') # format
+        data = bytearray([self._set_subscription_supported_format]) # format
         data += SUBSCRIBE # confidence / heartbeat
         data += SUBSCRIBE # event mem
         data += SUBSCRIBE # event log
@@ -602,7 +622,10 @@ class Panel:
         data += SUBSCRIBE # output status
         data += SUBSCRIBE # point status
         data += IGNORE    # door status
-        data += IGNORE    # unused
+        data += IGNORE    # walk test state (unused)
+        if self._set_subscription_supported_format == 2:
+            data += SUBSCRIBE # panel system status
+            data += IGNORE    # wireless learn mode state (unused)
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
     def _area_on_off_consumer(self, data) -> int:
@@ -612,6 +635,8 @@ class Panel:
         # Retrieve panel history, as it is possible that a panel may have been armed during 
         # initialisation, and history can not be retrived when a panel is armed.
         asyncio.create_task(self._load_history())
+        # Some panels rely on history updates to update faults, so we need to update faults as well.
+        asyncio.create_task(self._load_faults())
         return 3
 
     def _area_ready_consumer(self, data) -> int:
@@ -653,7 +678,15 @@ class Panel:
     def _event_history_consumer(self, data) -> int:
         r = self._history.parse_subscription_event(data)
         self.history_observer._notify()
+        # Some panels don't support the subscription for panel status
+        # Since the panel creates history events for most faults
+        # we can just update faults when we get a history event.
+        asyncio.create_task(self._load_faults())
         return r
+
+    def _panel_status_consumer(self, data) -> int:
+        self._set_panel_faults(BE_INT.int16(data, 1))
+        return 6
 
     def _on_status_update(self, data):
         CONSUMERS = {
@@ -664,6 +697,7 @@ class Panel:
             0x05: self._area_ready_consumer,
             0x06: self._output_status_consumer,
             0x07: self._point_status_consumer,
+            0x10: self._panel_status_consumer
         }
         pos = 0
         while pos < len(data):
