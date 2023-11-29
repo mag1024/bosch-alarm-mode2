@@ -437,7 +437,7 @@ class Panel:
             raise ValueError("Bosch alarm panels only support years between 2010 and 2037")
         year = year - 2000
         await self._connection.send_command(
-                CMD.SET_DATE_TIME, bytearray[date.month, date.day, year, date.hour, date.minute])
+                CMD.SET_DATE_TIME, bytearray([date.month, date.day, year, date.hour, date.minute]))
 
     async def get_panel_date(self) -> datetime:
         data = await self._connection.send_command(
