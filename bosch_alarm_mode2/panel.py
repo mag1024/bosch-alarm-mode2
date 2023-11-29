@@ -697,7 +697,7 @@ class Panel:
             0x05: self._area_ready_consumer,
             0x06: self._output_status_consumer,
             0x07: self._point_status_consumer,
-            0x10: self._panel_status_consumer
+            0x0a: self._panel_status_consumer
         }
         pos = 0
         while pos < len(data):
