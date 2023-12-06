@@ -279,8 +279,8 @@ class Panel:
         await self._load_faults()
 
     async def _load_history(self):
-        # Don't retrieve history when armed, as panels do not support this.
-        if any(area.is_armed() for area in self.areas.values()):
+        # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
+        if not all(area.is_disarmed() for area in self.areas.values()):
             return
         start_size = len(self.events)
         start_t = time.perf_counter()
