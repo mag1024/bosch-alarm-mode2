@@ -12,7 +12,7 @@ In practice, this library has only been tested with B8512G and the B5512 and the
 #### Authentication
 - For all panels, make sure that your Automation Passcode is set to a passcode that is at least 10 characters long.
 - For B and G series panels, set the "Automation Device" to "Mode 2", and use just your automation code for authentication.
-- For Solution panels, use your user code for authentication. The user code needs to have the "Master code functions" authority.
+- For Solution panels, use your user code for authentication. The user code needs to have the "master code functions" authority.
 - For AMAX panels, use both your automation code and your user code for authentication. 
 
 Full documentation of the API can be requested from
