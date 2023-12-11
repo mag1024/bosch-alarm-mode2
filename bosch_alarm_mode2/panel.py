@@ -338,6 +338,10 @@ class Panel:
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
             raise PermissionError("Authentication failed, please check your passcode.")
+        permissions = await self._connection.send_command(
+            CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
+        if not permissions[0]:
+            raise PermissionError("'Master code functions' authority required")
 
     async def _authenticate_automation_user(self):
         creds = bytearray(b'\x01')  # automation user
