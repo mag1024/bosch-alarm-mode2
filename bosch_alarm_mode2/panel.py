@@ -338,9 +338,10 @@ class Panel:
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
             raise PermissionError("Authentication failed, please check your passcode.")
-        permissions = await self._connection.send_command(CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
+        permissions = await self._connection.send_command(
+            CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
         if not permissions[0]:
-            raise PermissionError("The specified user does not have the 'master code functions' authority, which is required for this integration.")
+            raise PermissionError("'Master code functions' authority required")
 
     async def _authenticate_automation_user(self):
         creds = bytearray(b'\x01')  # automation user
