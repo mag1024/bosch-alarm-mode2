@@ -385,8 +385,7 @@ class Panel:
             if len(self._installer_or_user_code) > 8:
                 raise ValueError(
                     "The installer code has a maximum length of 8 digits.")
-            # AMAX panels require setting the user type to installer app
-            # Even though we authenticate with the automation code.
+            # AMAX panels require a user type of installer app, not automation
             user_type = USER_TYPE.INSTALLER_APP
         else:
             if not self._automation_code:
