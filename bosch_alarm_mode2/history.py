@@ -56,7 +56,7 @@ class History:
         count = event_data[0]
         start = BE_INT.int32(event_data, 1)
         # AMAX panels use some bytes of the event id as flags
-        # Mask away these bytes.
+        # Apply a mask to only keep the actual event id
         if self._amax:
             start = start & 0x001FF
         start = start + 1
