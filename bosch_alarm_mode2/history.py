@@ -55,7 +55,8 @@ class History:
     def parse_polled_events(self, event_data):
         count = event_data[0]
         start = BE_INT.int32(event_data, 1)
-        # AMAX panels put extra data into the event ID that we need to strip away
+        # AMAX panels use some bytes of the event id as flags
+        # Mask away these bytes.
         if self._amax:
             start = start & 0x001FF
         start = start + 1
