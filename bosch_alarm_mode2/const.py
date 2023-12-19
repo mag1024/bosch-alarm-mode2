@@ -202,3 +202,7 @@ class CMD:
 class PROTOCOL:
     BASIC = 0x01
     EXTENDED = 0x04
+
+class USER_TYPE:
+    INSTALLER_APP = 0x00
+    AUTOMATION = 0x01
