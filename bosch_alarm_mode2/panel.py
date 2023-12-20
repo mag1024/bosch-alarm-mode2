@@ -152,6 +152,7 @@ class Panel:
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
+        self._supports_permission_check = False
         self._set_subscription_supported_format = 0
         self._area_text_supported_format = 0
         self._output_text_supported_format = 0
@@ -338,13 +339,14 @@ class Panel:
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
             raise PermissionError("Authentication failed, please check your passcode.")
-        permissions = await self._connection.send_command(
-            CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
-        if not permissions[0]:
-            raise PermissionError("'Master code functions' authority required")
+        if self._supports_permission_check:
+            permissions = await self._connection.send_command(
+                CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
+            if not permissions[0]:
+                raise PermissionError("'Master code functions' authority required")
 
-    async def _authenticate_automation_user(self):
-        creds = bytearray(b'\x01')  # automation user
+    async def _authenticate_automation_user(self, user_type):
+        creds = bytearray([user_type])  # automation user
         creds.extend(map(ord, self._automation_code))
         creds.append(0x00) # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
@@ -357,6 +359,7 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
+        user_type = USER_TYPE.AUTOMATION
         if "Solution" in self.model:
             if not self._installer_or_user_code:
                 raise ValueError(
@@ -382,6 +385,8 @@ class Panel:
             if len(self._installer_or_user_code) > 8:
                 raise ValueError(
                     "The installer code has a maximum length of 8 digits.")
+            # AMAX panels require a user type of installer app, not automation
+            user_type = USER_TYPE.INSTALLER_APP
         else:
             if not self._automation_code:
                 raise ValueError(
@@ -390,7 +395,7 @@ class Panel:
             self._installer_or_user_code = None
             
         if self._automation_code:
-            await self._authenticate_automation_user()
+            await self._authenticate_automation_user(user_type)
         if self._installer_or_user_code:
             await self._authenticate_remote_user()
 
@@ -429,7 +434,7 @@ class Panel:
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
         self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
         self._set_subscription_supported_format = max(_supported_format(bitmask[24],[(0x40, 2)]), _supported_format(bitmask[16], [(0x20, 1)]))
-
+        self._supports_permission_check = bitmask[2] & 0x80
         self._history.init_for_panel(data[0])
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else

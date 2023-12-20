@@ -52,9 +52,7 @@ class History:
 
     def parse_polled_events(self, event_data):
         count = event_data[0]
-        # AMAX panels use the first byte of the event id as a flag for the event type
-        # Mask away the highest byte to stip this away.
-        start = (BE_INT.int32(event_data, 1) & 0x00FFFFFF) + 1
+        start = self._parser.parse_start_event_id(event_data) + 1
         event_data = event_data[5:]
         # Panels can have large numbers of history events, which take a very
         # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
@@ -122,6 +120,9 @@ class HistoryParser:
     def parse_polled_event(self, id, event_data):
         return HistoryEvent(id, *self._parse_event(self._parse_event_params(event_data)))
 
+    def parse_start_event_id(self, event_data):
+        return BE_INT.int32(event_data, 1)
+
     @abc.abstractmethod
     def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
         pass
@@ -182,6 +183,11 @@ class AmaxHistoryParser(HistoryParser):
 
     def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
         return _parse_sol_amax_timestamp(timestamp)
+
+    def parse_start_event_id(self, event_data):
+        # AMAX panels use some bytes of the event id as flags
+        # Apply a mask to only keep the actual event id
+        return (BE_INT.int32(event_data, 1) & 0x001FF)
 
     def _parse_event(self, event: HistoryEventParams):
         # Amax requires different strings depending on param1 sometimes
