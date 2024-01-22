@@ -570,7 +570,7 @@ class Panel:
                 self.areas[area]._set_alarm(priority, True)
             else:
                 LOG.warning(
-                    f"Found unknown area {area}, supported areas: [{self.areas.keys()}]")
+                    f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]")
             response_detail = response_detail[5:]
 
     async def _load_alarm_status(self):
@@ -669,6 +669,9 @@ class Panel:
     
     def _point_status_consumer(self, data) -> int:
         point_id = BE_INT.int16(data)
+        # Skip message if it is for an unconfigured point
+        if point_id not in self.points:
+            return 3
         self.points[point_id].status = data[2]
         LOG.debug("Point updated: %s", self.points[point_id])
         return 3
