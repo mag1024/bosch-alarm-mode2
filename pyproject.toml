@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bosch-alarm-mode2"
-version = "0.3.36"
+version = "0.3.37"
 description = ""
 authors = ["Michael Grigoriev <mag@luminal.org>"]
 
