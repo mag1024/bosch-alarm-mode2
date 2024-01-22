@@ -597,6 +597,8 @@ class Panel:
             response = response[3:]
 
     async def _load_output_status(self):
+        if not self.outputs:
+            return
         enabled = await self._load_entity_set(CMD.OUTPUT_STATUS)
         for id, output in self.outputs.items():
             output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
