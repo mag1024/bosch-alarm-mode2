@@ -48,6 +48,7 @@ ERROR = {
 PANEL_MODEL = {
     0x20: "Solution 2000",
     0x21: "Solution 3000",
+    0x28: "Solution 4000",
     0x22: "AMAX 2100",
     0x23: "AMAX 3000",
     0x24: "AMAX 4000",
@@ -129,7 +130,32 @@ class POINT_STATUS:
         0x04: "Missing",
         0x05: "Resistor 2",
         0x06: "Resistor 3",
-        0xFF: "Unknown",
+        0xFF: "Unknown"
+    }
+
+class DOOR_STATUS:
+    LOCKED = 0x00
+    NOT_DEFINED = 0x01
+    CYCLING = 0x02
+    SDI_FAILURE = 0x04
+    NOT_INSTALLED = 0x08
+    DIAGNOSTIC = 0x10
+    LEARN = 0x20
+    SECURED = 0x40
+    UNLOCKED = 0x80
+    UNKNOWN = 0xFF
+
+    TEXT = {
+        0x00: "Locked",
+        0x01: "Not Defined",
+        0x02: "Cycling",
+        0x04: "SDI Failure",
+        0x08: "Not Installed",
+        0x10: "Diagnostic Mode",
+        0x20: "Learn Mode",
+        0x40: "Secured",
+        0x80: "Unlocked",
+        0xFF: "Unknown"
     }
 
 ALARM_MEMORY_PRIORITY_ALARMS = [0x07, 0x09, 0x0A]
@@ -183,6 +209,11 @@ class CMD:
     AREA_STATUS = 0x26
     AREA_ARM = 0x27
     AREA_TEXT = 0x29
+    # Door group
+    REQUEST_CONFIGURED_DOORS = 0x2B
+    DOOR_STATUS = 0x2C
+    SET_DOOR_STATE = 0x2D
+    DOOR_TEXT = 0x2E
     # Output group
     REQUEST_CONFIGURED_OUTPUTS = 0x30
     OUTPUT_STATUS = 0x31

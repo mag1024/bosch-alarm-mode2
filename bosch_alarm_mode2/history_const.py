@@ -596,4 +596,8 @@ SOLUTION_HISTORY_FORMAT = {
     "124": "PUSH RES. MOD {param1}",
     "125": "Service Mode On",
     "126": "Service Mode Off",
+    "145": "Door {param1} Missing",
+    "146": "Door {param1} Missing Restore",
+    "150": "Door {param1} Granted by User {param2}",
+    "165": "Door {param1} Access Denied Card User {param2}",
 }
