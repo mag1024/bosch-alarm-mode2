@@ -529,13 +529,15 @@ class Panel:
         self.points = {id: Point(name) for id, name in names.items()}
 
     async def _load_doors(self):
-        if self._door_text_supported_format:
-            names = await self._load_names(
-                CMD.DOOR_TEXT, CMD.REQUEST_CONFIGURED_DOORS, 
-                1, 
-                "DOOR"
-            )
-            self.doors = {id: Door(name) for id, name in names.items()}
+        if not self._supports_door:
+            return
+        names = await self._load_names(
+            CMD.DOOR_TEXT, CMD.REQUEST_CONFIGURED_DOORS, 
+            self._door_text_supported_format, 
+            "DOOR",
+            1
+        )
+        self.doors = {id: Door(name) for id, name in names.items()}
 
     async def _load_names_cf03(self, name_cmd, enabled_ids) -> dict[int, str]:
         id = 0
