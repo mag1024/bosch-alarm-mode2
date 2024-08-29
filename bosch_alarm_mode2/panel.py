@@ -112,7 +112,7 @@ class Door(PanelEntity):
         PanelEntity.__init__(self, name, status)
 
     def is_open(self) -> bool:
-        return self.status == DOOR_STATUS.UNLOCKED
+        return self.status is DOOR_STATUS.UNLOCKED or DOOR_STATUS.CYCLING
 
     def is_closed(self) -> bool:
         return self.status == DOOR_STATUS.LOCKED
@@ -720,7 +720,6 @@ class Panel:
     
     def _door_status_consumer(self, data) -> int:
         door_id = BE_INT.int16(data)
-        LOG.debug("Door updated: %d", door_id)
         # Skip message if it is for an unconfigured point
         if door_id not in self.doors:
             return 3
