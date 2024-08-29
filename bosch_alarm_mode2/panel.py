@@ -112,7 +112,7 @@ class Door(PanelEntity):
         PanelEntity.__init__(self, name, status)
 
     def is_open(self) -> bool:
-        return self.status is DOOR_STATUS.UNLOCKED or DOOR_STATUS.CYCLING
+        return self.status in DOOR_STATUS.OPEN
 
     def is_closed(self) -> bool:
         return self.status == DOOR_STATUS.LOCKED
