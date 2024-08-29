@@ -237,6 +237,18 @@ class Panel:
     async def set_output_inactive(self, output_id):
         await self._set_output_state(output_id, OUTPUT_STATUS.INACTIVE)
 
+    async def unlock_door(self, door_id):
+        await self._set_door_state(door_id, DOOR_ACTION.UNLOCK)
+
+    async def relock_door(self, door_id):
+        await self._set_door_state(door_id, DOOR_ACTION.TERMINATE_UNLOCK)
+
+    async def unsecure_door(self, door_id):
+        await self._set_door_state(door_id, DOOR_ACTION.TERMINATE_SECURE)
+
+    async def secure_door(self, door_id):
+        await self._set_door_state(door_id, DOOR_ACTION.SECURE)
+
     def connection_status(self) -> bool:
         return self._connection is not None and self.points and self.areas
 
@@ -654,6 +666,10 @@ class Panel:
         async with self._output_semaphore:
             request = bytearray([output_id, state])
             await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+
+    async def _set_door_state(self, door_id, state):
+        request = bytearray([door_id, state])
+        await self._connection.send_command(CMD.SET_DOOR_STATE, request)
 
     async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
