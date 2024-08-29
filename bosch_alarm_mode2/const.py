@@ -145,6 +145,8 @@ class DOOR_STATUS:
     UNLOCKED = 0x80
     UNKNOWN = 0xFF
 
+    OPEN = [0x02, 0x80]
+
     TEXT = {
         0x00: "Locked",
         0x01: "Not Defined",
