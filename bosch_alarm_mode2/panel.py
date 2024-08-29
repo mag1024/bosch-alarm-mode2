@@ -114,7 +114,7 @@ class Door(PanelEntity):
     def is_open(self) -> bool:
         return self.status in DOOR_STATUS.OPEN
 
-    def is_closed(self) -> bool:
+    def is_locked(self) -> bool:
         return self.status == DOOR_STATUS.LOCKED
 
     def reset(self):
