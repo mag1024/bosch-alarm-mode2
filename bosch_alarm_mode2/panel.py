@@ -240,6 +240,9 @@ class Panel:
     async def unlock_door(self, door_id):
         await self._set_door_state(door_id, DOOR_ACTION.UNLOCK)
 
+    async def cycle_door(self, door_id):
+        await self._set_door_state(door_id, DOOR_ACTION.CYCLE)
+
     async def relock_door(self, door_id):
         await self._set_door_state(door_id, DOOR_ACTION.TERMINATE_UNLOCK)
 
