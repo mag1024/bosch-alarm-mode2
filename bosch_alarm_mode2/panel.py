@@ -237,20 +237,20 @@ class Panel:
     async def set_output_inactive(self, output_id):
         await self._set_output_state(output_id, OUTPUT_STATUS.INACTIVE)
 
-    async def unlock_door(self, door_id):
-        await self._set_door_state(door_id, DOOR_ACTION.UNLOCK)
+    async def door_unlock(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.UNLOCK)
 
-    async def cycle_door(self, door_id):
-        await self._set_door_state(door_id, DOOR_ACTION.CYCLE)
+    async def door_cycle(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.CYCLE)
 
-    async def relock_door(self, door_id):
-        await self._set_door_state(door_id, DOOR_ACTION.TERMINATE_UNLOCK)
+    async def door_relock(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.TERMINATE_UNLOCK)
 
-    async def unsecure_door(self, door_id):
-        await self._set_door_state(door_id, DOOR_ACTION.TERMINATE_SECURE)
+    async def door_unsecure(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.TERMINATE_SECURE)
 
-    async def secure_door(self, door_id):
-        await self._set_door_state(door_id, DOOR_ACTION.SECURE)
+    async def door_secure(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.SECURE)
 
     def connection_status(self) -> bool:
         return self._connection is not None and self.points and self.areas
@@ -312,7 +312,8 @@ class Panel:
     async def _load_status(self):
         await self._load_entity_status(CMD.AREA_STATUS, self.areas)
         await self._load_entity_status(CMD.POINT_STATUS, self.points)
-        await self._load_entity_status(CMD.DOOR_STATUS, self.doors, 1)
+        if self._supports_door:
+            await self._load_entity_status(CMD.DOOR_STATUS, self.doors, 1)
         await self._load_output_status()
         await self._load_alarm_status()
         await self._load_history()
@@ -628,7 +629,6 @@ class Panel:
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
-        format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
         data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
@@ -641,18 +641,15 @@ class Panel:
                     area._set_alarm(priority, False)
 
     async def _load_entity_status(self, status_cmd, entities, id_size=2):
-        if not self._supports_door:
-            return
         request = bytearray()
         for id in entities.keys(): request.extend(id.to_bytes(id_size, 'big'))
         response = await self._connection.send_command(status_cmd, request)
         while response:
             if id_size == 2:
                 entities[BE_INT.int16(response)].status = response[2]
-                response = response[3:]
             else:
                 entities[response[0]].status = response[1]
-                response = response[2:]
+            response = response[id_size+1:]
     async def _load_output_status(self):
         if not self.outputs:
             return
@@ -670,7 +667,7 @@ class Panel:
             request = bytearray([output_id, state])
             await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
 
-    async def _set_door_state(self, door_id, state):
+    async def _door_set_state(self, door_id, state):
         request = bytearray([door_id, state])
         await self._connection.send_command(CMD.SET_DOOR_STATE, request)
 
@@ -741,7 +738,7 @@ class Panel:
     
     def _door_status_consumer(self, data) -> int:
         door_id = BE_INT.int16(data)
-        # Skip message if it is for an unconfigured point
+        # Skip message if it is for an unconfigured door
         if door_id not in self.doors:
             return 3
         self.doors[door_id].status = data[2]
