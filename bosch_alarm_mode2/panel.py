@@ -106,6 +106,22 @@ class Point(PanelEntity):
 
     def __repr__(self):
         return f"{self.name}: {POINT_STATUS.TEXT[self.status]}"
+
+class Door(PanelEntity):
+    def __init__(self, name = None, status = DOOR_STATUS.UNKNOWN):
+        PanelEntity.__init__(self, name, status)
+
+    def is_open(self) -> bool:
+        return self.status in DOOR_STATUS.OPEN
+
+    def is_locked(self) -> bool:
+        return self.status == DOOR_STATUS.LOCKED
+
+    def reset(self):
+        self.status = DOOR_STATUS.UNKNOWN
+
+    def __repr__(self):
+        return f"{self.name}: {DOOR_STATUS.TEXT[self.status]}"
     
 
 class Output(PanelEntity):
@@ -149,14 +165,17 @@ class Panel:
         self.areas = {}
         self.points = {}
         self.outputs = {}
+        self.doors = {}
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
         self._supports_permission_check = False
+        self._supports_door = False
         self._set_subscription_supported_format = 0
         self._area_text_supported_format = 0
         self._output_text_supported_format = 0
         self._point_text_supported_format = 0
+        self._door_text_supported_format = 0
         self._alarm_summary_supported_format = 0
         self._output_semaphore = asyncio.Semaphore(1)
 
@@ -177,6 +196,7 @@ class Panel:
             await self._load_areas()
             await self._load_points()
             await self._load_outputs()
+            await self._load_doors()
         if load_selector & self.LOAD_STATUS:
             await self._load_status()
             if self._set_subscription_supported_format:
@@ -217,6 +237,21 @@ class Panel:
     async def set_output_inactive(self, output_id):
         await self._set_output_state(output_id, OUTPUT_STATUS.INACTIVE)
 
+    async def door_unlock(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.UNLOCK)
+
+    async def door_cycle(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.CYCLE)
+
+    async def door_relock(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.TERMINATE_UNLOCK)
+
+    async def door_unsecure(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.TERMINATE_SECURE)
+
+    async def door_secure(self, door_id):
+        await self._door_set_state(door_id, DOOR_ACTION.SECURE)
+
     def connection_status(self) -> bool:
         return self._connection is not None and self.points and self.areas
 
@@ -234,6 +269,9 @@ class Panel:
         if self.points:
             print('Points:')
             print(self.points)
+        if self.doors:
+            print('Doors:')
+            print(self.doors)
         if self.outputs:
             print('Outputs:')
             print(self.outputs)
@@ -274,6 +312,8 @@ class Panel:
     async def _load_status(self):
         await self._load_entity_status(CMD.AREA_STATUS, self.areas)
         await self._load_entity_status(CMD.POINT_STATUS, self.points)
+        if self._supports_door:
+            await self._load_entity_status(CMD.DOOR_STATUS, self.doors, 1)
         await self._load_output_status()
         await self._load_alarm_status()
         await self._load_history()
@@ -429,6 +469,8 @@ class Panel:
         self._supports_serial = bitmask[13] & 0x04
         self._supports_status = bitmask[5] & 0x08
         self._supports_subscriptions = bitmask[0] & 0x40
+        self._supports_door = bitmask[8] & 0x40
+        self._door_text_supported_format = _supported_format(bitmask[8], [(0x10, 1)])
         self._area_text_supported_format = _supported_format(bitmask[7], [(0x08, 3), (0x20, 1)])
         self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
@@ -501,6 +543,17 @@ class Panel:
             "POINT"
         )
         self.points = {id: Point(name) for id, name in names.items()}
+
+    async def _load_doors(self):
+        if not self._supports_door:
+            return
+        names = await self._load_names(
+            CMD.DOOR_TEXT, CMD.REQUEST_CONFIGURED_DOORS, 
+            self._door_text_supported_format, 
+            "DOOR",
+            1
+        )
+        self.doors = {id: Door(name) for id, name in names.items()}
 
     async def _load_names_cf03(self, name_cmd, enabled_ids) -> dict[int, str]:
         id = 0
@@ -576,7 +629,6 @@ class Panel:
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
-        format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
         data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
@@ -588,14 +640,16 @@ class Panel:
                 for area in self.areas.values():
                     area._set_alarm(priority, False)
 
-    async def _load_entity_status(self, status_cmd, entities):
+    async def _load_entity_status(self, status_cmd, entities, id_size=2):
         request = bytearray()
-        for id in entities.keys(): request.extend(id.to_bytes(2, 'big'))
+        for id in entities.keys(): request.extend(id.to_bytes(id_size, 'big'))
         response = await self._connection.send_command(status_cmd, request)
         while response:
-            entities[BE_INT.int16(response)].status = response[2]
-            response = response[3:]
-
+            if id_size == 2:
+                entities[BE_INT.int16(response)].status = response[2]
+            else:
+                entities[response[0]].status = response[1]
+            response = response[id_size+1:]
     async def _load_output_status(self):
         if not self.outputs:
             return
@@ -612,6 +666,10 @@ class Panel:
         async with self._output_semaphore:
             request = bytearray([output_id, state])
             await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+
+    async def _door_set_state(self, door_id, state):
+        request = bytearray([door_id, state])
+        await self._connection.send_command(CMD.SET_DOOR_STATE, request)
 
     async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
@@ -632,7 +690,7 @@ class Panel:
         data += SUBSCRIBE # area ready
         data += SUBSCRIBE # output status
         data += SUBSCRIBE # point status
-        data += IGNORE    # door status
+        data += SUBSCRIBE # door status
         data += IGNORE    # walk test state (unused)
         if self._set_subscription_supported_format == 2:
             data += SUBSCRIBE # panel system status
@@ -677,6 +735,15 @@ class Panel:
         self.points[point_id].status = data[2]
         LOG.debug("Point updated: %s", self.points[point_id])
         return 3
+    
+    def _door_status_consumer(self, data) -> int:
+        door_id = BE_INT.int16(data)
+        # Skip message if it is for an unconfigured door
+        if door_id not in self.doors:
+            return 3
+        self.doors[door_id].status = data[2]
+        LOG.debug("Door updated: %s", self.doors[door_id])
+        return 3
 
     def _event_summary_consumer(self, data) -> int:
         priority = data[0]
@@ -711,6 +778,7 @@ class Panel:
             0x05: self._area_ready_consumer,
             0x06: self._output_status_consumer,
             0x07: self._point_status_consumer,
+            0x08: self._door_status_consumer,
             0x0a: self._panel_status_consumer
         }
         pos = 0

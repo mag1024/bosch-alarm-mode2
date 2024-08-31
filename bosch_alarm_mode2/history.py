@@ -38,7 +38,7 @@ class History:
         return self._events[-1][0] if self._events else 0xFFFFFFFF
 
     def init_for_panel(self, panel_type):
-        if panel_type <= 0x21:
+        if panel_type <= 0x21 or panel_type == 0x28:
             self._parser = SolutionHistoryParser()
         elif panel_type <= 0x24:
             self._parser = AmaxHistoryParser()
