@@ -642,6 +642,8 @@ class Panel:
                     area._set_alarm(priority, False)
 
     async def _load_entity_status(self, status_cmd, entities, id_size=2):
+        if not entities:
+            return
         request = bytearray()
         for id in entities.keys(): request.extend(id.to_bytes(id_size, 'big'))
         response = await self._connection.send_command(status_cmd, request)
