@@ -629,7 +629,7 @@ class Panel:
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
-        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
+        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, self._alarm_summary_supported_format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
             i = (priority - 1) * 2
             count = BE_INT.int16(data, i)
