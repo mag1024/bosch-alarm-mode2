@@ -178,6 +178,7 @@ class Panel:
         self._door_text_supported_format = 0
         self._alarm_summary_supported_format = 0
         self._output_semaphore = asyncio.Semaphore(1)
+        self._memory_semaphore = asyncio.Semaphore(1)
 
     LOAD_EXTENDED_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -318,6 +319,8 @@ class Panel:
         await self._load_alarm_status()
         await self._load_history()
         await self._load_faults()
+        asyncio.create_task(self._get_alarms_for_priority(7))
+        asyncio.create_task(self._load_faults())
 
     async def _load_history(self):
         # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
@@ -608,38 +611,43 @@ class Panel:
         return {id: f"{type}{id}" for id in enabled_ids}
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
-        request = bytearray([priority])
-        if last_area and last_point:
-            request.append(last_area.to_bytes(2, 'big'))
-            request.append(last_point.to_bytes(2, 'big'))
-        response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
-        while response_detail:
-            area = BE_INT.int16(response_detail)
-            # item_type = response_detail[2]
-            point = BE_INT.int16(response_detail, 3)
-            if point == 0xFFFF:
-                await self._get_alarms_for_priority(priority, area, point)
-            if area in self.areas:
-                self.areas[area]._set_alarm(priority, True)
-            else:
-                LOG.warning(
-                    f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]")
-            response_detail = response_detail[5:]
+        # It was found that the panel does not like multiple commands interacting with memory simultaneously
+        async with self._memory_semaphore:
+            request = bytearray([priority])
+            if last_area and last_point:
+                request.append(last_area.to_bytes(2, 'big'))
+                request.append(last_point.to_bytes(2, 'big'))
+            response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
+            while response_detail:
+                area = BE_INT.int16(response_detail)
+                # item_type = response_detail[2]
+                point = BE_INT.int16(response_detail, 3)
+                if point == 0xFFFF:
+                    await self._get_alarms_for_priority(priority, area, point)
+                if area in self.areas:
+                    self.areas[area]._set_alarm(priority, True)
+                else:
+                    LOG.warning(
+                        f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]")
+                response_detail = response_detail[5:]
 
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
-        format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
-        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
-        for priority in ALARM_MEMORY_PRIORITIES.keys():
-            i = (priority - 1) * 2
-            count = BE_INT.int16(data, i)
-            if count:
-                await self._get_alarms_for_priority(priority)
-            else:
-                # Nothing triggered, clear alarms
-                for area in self.areas.values():
-                    area._set_alarm(priority, False)
+        
+        # It was found that the panel does not like multiple commands interacting with memory simultaneously
+        async with self._memory_semaphore:
+            format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
+            data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
+            for priority in ALARM_MEMORY_PRIORITIES.keys():
+                i = (priority - 1) * 2
+                count = BE_INT.int16(data, i)
+                if count:
+                    await self._get_alarms_for_priority(priority)
+                else:
+                    # Nothing triggered, clear alarms
+                    for area in self.areas.values():
+                        area._set_alarm(priority, False)
 
     async def _load_entity_status(self, status_cmd, entities, id_size=2):
         if not entities:
