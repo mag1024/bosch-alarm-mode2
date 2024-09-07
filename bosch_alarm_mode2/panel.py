@@ -319,8 +319,6 @@ class Panel:
         await self._load_alarm_status()
         await self._load_history()
         await self._load_faults()
-        asyncio.create_task(self._get_alarms_for_priority(7))
-        asyncio.create_task(self._load_faults())
 
     async def _load_history(self):
         # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
@@ -520,8 +518,10 @@ class Panel:
 
     async def _load_faults(self):
         if self._supports_status:
-            data = await self._connection.send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
-            self._set_panel_faults(BE_INT.int16(data, 5))
+            # It was found that the panel does not like multiple commands interacting with memory simultaneously
+            async with self._memory_semaphore:
+                data = await self._connection.send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
+                self._set_panel_faults(BE_INT.int16(data, 5))
 
     async def _load_outputs(self):
         names = await self._load_names(
@@ -635,19 +635,17 @@ class Panel:
         if not self._alarm_summary_supported_format:
             return
         
-        # It was found that the panel does not like multiple commands interacting with memory simultaneously
-        async with self._memory_semaphore:
-            format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
-            data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
-            for priority in ALARM_MEMORY_PRIORITIES.keys():
-                i = (priority - 1) * 2
-                count = BE_INT.int16(data, i)
-                if count:
-                    await self._get_alarms_for_priority(priority)
-                else:
-                    # Nothing triggered, clear alarms
-                    for area in self.areas.values():
-                        area._set_alarm(priority, False)
+        format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
+        data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
+        for priority in ALARM_MEMORY_PRIORITIES.keys():
+            i = (priority - 1) * 2
+            count = BE_INT.int16(data, i)
+            if count:
+                await self._get_alarms_for_priority(priority)
+            else:
+                # Nothing triggered, clear alarms
+                for area in self.areas.values():
+                    area._set_alarm(priority, False)
 
     async def _load_entity_status(self, status_cmd, entities, id_size=2):
         if not entities:
