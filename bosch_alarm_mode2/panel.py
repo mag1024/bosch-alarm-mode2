@@ -611,6 +611,8 @@ class Panel:
         return {id: f"{type}{id}" for id in enabled_ids}
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
+        area = None
+        point = None
         # It was found that the panel does not like multiple commands interacting with memory simultaneously
         async with self._memory_semaphore:
             request = bytearray([priority])
@@ -623,13 +625,16 @@ class Panel:
                 # item_type = response_detail[2]
                 point = BE_INT.int16(response_detail, 3)
                 if point == 0xFFFF:
-                    await self._get_alarms_for_priority(priority, area, point)
+                    break
                 if area in self.areas:
                     self.areas[area]._set_alarm(priority, True)
                 else:
                     LOG.warning(
                         f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]")
                 response_detail = response_detail[5:]
+            
+        if point == 0xFFFF:
+            await self._get_alarms_for_priority(priority, area, point)
 
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
