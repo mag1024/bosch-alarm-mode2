@@ -21,7 +21,6 @@ logging.basicConfig(stream = sys.stdout,
                     level = logging.DEBUG)
 LOG = logging.getLogger(__name__)
 
-
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 panel = Panel(
@@ -33,6 +32,10 @@ try:
     loop.run_until_complete(panel.connect())
     panel.print()
     LOG.info("Initial connection complete in %.2fs" % (time.perf_counter() - start_t))
+    for _ in range(5):
+        loop.run_until_complete(panel.memory_test())
+    loop.run_until_complete(panel.report())
+    exit()
     loop.run_forever()
 except KeyboardInterrupt:
     loop.run_until_complete(panel.disconnect())

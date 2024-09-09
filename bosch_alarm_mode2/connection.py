@@ -39,7 +39,7 @@ class Connection(asyncio.Protocol):
         request.extend(data)
         LOG.debug(">> %s", binascii.hexlify(request))
         response = asyncio.get_running_loop().create_future()
-        self._pending.append(response)
+        self._pending.append((request, response))
         self._transport.write(request)
         return response
 
@@ -68,8 +68,10 @@ class Connection(asyncio.Protocol):
             self._buffer = self._buffer[msg_len:]
 
     def _process_response(self, data):
-        response = self._pending.popleft()
+        request, response = self._pending.popleft()
         if data[0] == 0xFC: response.set_result(None)
         elif data[0] == 0xFD: response.set_exception(Exception("NACK: ", ERROR[data[1]]))
-        elif data[0] == 0xFE: response.set_result(data[1:])
+        elif data[0] == 0xFE:
+            LOG.debug(">< %s --> %s", binascii.hexlify(request), binascii.hexlify(data[1:]))
+            response.set_result(data[1:])
         else: response.set_exception(Exception("unexpected response code:", data))

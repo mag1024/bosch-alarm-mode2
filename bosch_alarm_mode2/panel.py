@@ -319,6 +319,28 @@ class Panel:
         if self._supports_door:
             await self._load_entity_status(CMD.DOOR_STATUS, self.doors, 1)
 
+    async def memory_test(self):
+        await asyncio.gather(
+                self._load_faults(),
+                self._load_history(),
+                self._load_faults(),
+                self._load_history(),
+                #self._load_output_status(),
+                self._load_faults(),
+                self._load_history(),
+                #self._load_output_status(),
+                self._load_faults(),
+                self._load_history(),
+                #self._load_output_status(),
+                self._get_alarms_for_priority(0x07),
+                self._get_alarms_for_priority(0x09),
+                self._get_alarms_for_priority(0x0A)
+            )
+
+    async def report(self):
+        await asyncio.sleep(5)
+        LOG.debug("Responses pending: %d", self._connection._pending.qsize())
+
     async def _load_history(self):
         # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
         if not all(area.is_disarmed() for area in self.areas.values()):
@@ -729,7 +751,8 @@ class Panel:
     def _output_status_consumer(self, data) -> int:
         return 3
     def _output_status_finalizer(self):
-        asyncio.create_task(self._load_output_status())
+        #asyncio.create_task(self._load_output_status())
+        pass
     
     def _point_status_consumer(self, data) -> int:
         point_id = BE_INT.int16(data)
