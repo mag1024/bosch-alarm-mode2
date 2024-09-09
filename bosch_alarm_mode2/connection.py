@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import binascii
+
+from collections import deque
 
 from .const import ERROR, PROTOCOL
 from .utils import BE_INT
@@ -14,7 +17,7 @@ class Connection(asyncio.Protocol):
         self._on_disconnect = on_disconnect
         self._transport = None
         self._buffer = bytearray()
-        self._pending = asyncio.Queue()
+        self._pending = deque()
 
     def connection_made(self, transport):
         self._transport = transport
@@ -24,7 +27,7 @@ class Connection(asyncio.Protocol):
         self._on_disconnect()
 
     def data_received(self, data):
-        LOG.debug("<< %s", data)
+        LOG.debug("<< %s", binascii.hexlify(data))
         self._buffer += data
         self._consume_buffer()
 
@@ -34,9 +37,9 @@ class Connection(asyncio.Protocol):
         request.extend((len(data) + 1).to_bytes(length_size, 'big'))
         request.append(code)
         request.extend(data)
+        LOG.debug(">> %s", binascii.hexlify(request))
         response = asyncio.get_running_loop().create_future()
-        self._pending.put_nowait(response)
-        LOG.debug(">> %s", bytes(request))
+        self._pending.append(response)
         self._transport.write(request)
         return response
 
@@ -65,7 +68,7 @@ class Connection(asyncio.Protocol):
             self._buffer = self._buffer[msg_len:]
 
     def _process_response(self, data):
-        response = self._pending.get_nowait()
+        response = self._pending.popleft()
         if data[0] == 0xFC: response.set_result(None)
         elif data[0] == 0xFD: response.set_exception(Exception("NACK: ", ERROR[data[1]]))
         elif data[0] == 0xFE: response.set_result(data[1:])

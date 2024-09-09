@@ -51,6 +51,7 @@ class History:
         self._events.append(HistoryEvent(id, datetime.now(), error_str))
 
     def parse_polled_events(self, event_data):
+        if not event_data: return
         count = event_data[0]
         start = self._parser.parse_start_event_id(event_data) + 1
         event_data = event_data[5:]
