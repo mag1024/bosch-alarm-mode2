@@ -18,6 +18,7 @@ class Connection(asyncio.Protocol):
         self._transport = None
         self._buffer = bytearray()
         self._pending = deque()
+        self._transmit_semaphore = asyncio.Semaphore(1)
 
     def connection_made(self, transport):
         self._transport = transport
@@ -31,17 +32,19 @@ class Connection(asyncio.Protocol):
         self._buffer += data
         self._consume_buffer()
 
-    def send_command(self, code, data = bytearray()) -> asyncio.Future:
-        request = bytearray([self.protocol])
-        length_size = 2 if self.protocol == PROTOCOL.EXTENDED else 1
-        request.extend((len(data) + 1).to_bytes(length_size, 'big'))
-        request.append(code)
-        request.extend(data)
-        LOG.debug(">> %s", binascii.hexlify(request))
-        response = asyncio.get_running_loop().create_future()
-        self._pending.append(response)
-        self._transport.write(request)
-        return response
+    async def send_command(self, code, data = bytearray()) -> asyncio.Future:
+        # Some panels don't like receiving multiple commands at once, so we limit commands to only run one at a time
+        async with self._transmit_semaphore:
+            request = bytearray([self.protocol])
+            length_size = 2 if self.protocol == PROTOCOL.EXTENDED else 1
+            request.extend((len(data) + 1).to_bytes(length_size, 'big'))
+            request.append(code)
+            request.extend(data)
+            LOG.debug(">> %s", binascii.hexlify(request))
+            response = asyncio.get_running_loop().create_future()
+            self._pending.append(response)
+            self._transport.write(request)
+            return await response
 
     def close(self):
         if self._transport:

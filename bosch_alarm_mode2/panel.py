@@ -177,8 +177,6 @@ class Panel:
         self._point_text_supported_format = 0
         self._door_text_supported_format = 0
         self._alarm_summary_supported_format = 0
-        self._output_semaphore = asyncio.Semaphore(1)
-        self._memory_semaphore = asyncio.Semaphore(1)
 
     LOAD_EXTENDED_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -518,10 +516,8 @@ class Panel:
 
     async def _load_faults(self):
         if self._supports_status:
-            # It was found that the panel does not like multiple commands interacting with memory simultaneously
-            async with self._memory_semaphore:
-                data = await self._connection.send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
-                self._set_panel_faults(BE_INT.int16(data, 5))
+            data = await self._connection.send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
+            self._set_panel_faults(BE_INT.int16(data, 5))
 
     async def _load_outputs(self):
         names = await self._load_names(
@@ -611,30 +607,24 @@ class Panel:
         return {id: f"{type}{id}" for id in enabled_ids}
 
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
-        area = None
-        point = None
-        # It was found that the panel does not like multiple commands interacting with memory simultaneously
-        async with self._memory_semaphore:
-            request = bytearray([priority])
-            if last_area and last_point:
-                request.append(last_area.to_bytes(2, 'big'))
-                request.append(last_point.to_bytes(2, 'big'))
-            response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
-            while response_detail:
-                area = BE_INT.int16(response_detail)
-                # item_type = response_detail[2]
-                point = BE_INT.int16(response_detail, 3)
-                if point == 0xFFFF:
-                    break
-                if area in self.areas:
-                    self.areas[area]._set_alarm(priority, True)
-                else:
-                    LOG.warning(
-                        f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]")
-                response_detail = response_detail[5:]
-            
-        if point == 0xFFFF:
-            await self._get_alarms_for_priority(priority, area, point)
+        request = bytearray([priority])
+        if last_area and last_point:
+            request.append(last_area.to_bytes(2, 'big'))
+            request.append(last_point.to_bytes(2, 'big'))
+        response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
+        while response_detail:
+            area = BE_INT.int16(response_detail)
+            # item_type = response_detail[2]
+            point = BE_INT.int16(response_detail, 3)
+            if point == 0xFFFF:
+                await self._get_alarms_for_priority(priority, area, point)
+                return
+            if area in self.areas:
+                self.areas[area]._set_alarm(priority, True)
+            else:
+                LOG.warning(
+                    f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]")
+            response_detail = response_detail[5:]
 
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
@@ -672,14 +662,8 @@ class Panel:
             output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
 
     async def _set_output_state(self, output_id, state):
-        # During testing, it was found that toggling the state of multiple outputs at once
-        # would occasionally stop the panel from responding with a subscription event
-        # to acknowledge the state change. This would mean that home assistant and the 
-        # panel would end up out of sync, but limiting concurrent changes with a semaphore
-        # would stop this from happening.
-        async with self._output_semaphore:
-            request = bytearray([output_id, state])
-            await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+        request = bytearray([output_id, state])
+        await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
 
     async def _door_set_state(self, door_id, state):
         request = bytearray([door_id, state])
