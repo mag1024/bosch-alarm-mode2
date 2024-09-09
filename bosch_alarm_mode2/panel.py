@@ -313,12 +313,12 @@ class Panel:
     async def _load_status(self):
         await self._load_entity_status(CMD.AREA_STATUS, self.areas)
         await self._load_entity_status(CMD.POINT_STATUS, self.points)
-        if self._supports_door:
-            await self._load_entity_status(CMD.DOOR_STATUS, self.doors, 1)
         await self._load_output_status()
         await self._load_alarm_status()
         await self._load_history()
         await self._load_faults()
+        if self._supports_door:
+            await self._load_entity_status(CMD.DOOR_STATUS, self.doors, 1)
 
     async def _load_history(self):
         # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
@@ -673,7 +673,7 @@ class Panel:
 
     async def _set_output_state(self, output_id, state):
         # During testing, it was found that toggling the state of multiple outputs at once
-        # would ocassionally stop the panel from responding with a subscription event
+        # would occasionally stop the panel from responding with a subscription event
         # to acknowledge the state change. This would mean that home assistant and the 
         # panel would end up out of sync, but limiting concurrent changes with a semaphore
         # would stop this from happening.
@@ -715,48 +715,47 @@ class Panel:
         area_id = BE_INT.int16(data)
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
+        return 3
+    def _area_on_off_finalizer(self):
         # Retrieve panel history, as it is possible that a panel may have been armed during 
         # initialisation, and history can not be retrived when a panel is armed.
         asyncio.create_task(self._load_history())
         # Some panels rely on history updates to update faults, so we need to update faults as well.
         asyncio.create_task(self._load_faults())
-        return 3
 
     def _area_ready_consumer(self, data) -> int:
         area_id = BE_INT.int16(data)
         # Skip message if it is for an unconfigured area
         if area_id not in self.areas:
-            return 5
-        ready_status = data[2]
-        faults = BE_INT.int16(data, 3)
-        self.areas[area_id]._set_ready(ready_status, faults)
-        LOG.debug("Area %d: %s (%d faults)" % (
-            area_id, AREA_READY[ready_status], faults))
+            ready_status = data[2]
+            faults = BE_INT.int16(data, 3)
+            self.areas[area_id]._set_ready(ready_status, faults)
+            LOG.debug("Area %d: %s (%d faults)" % (
+                area_id, AREA_READY[ready_status], faults))
         return 5
 
+    # Solution panels send events with output ids that don't match those
+    # used by the rest of the commands. This means we can't actually rely 
+    # on the data from the subscription event and instead need to poll for output status
     def _output_status_consumer(self, data) -> int:
-        # Solution panels send events with output ids that don't match those
-        # used by the rest of the commands. This means we can't actually rely 
-        # on the data from the subscription event and instead need to poll for output status
-        asyncio.create_task(self._load_output_status())
         return 3
+    def _output_status_finalizer(self):
+        asyncio.create_task(self._load_output_status())
     
     def _point_status_consumer(self, data) -> int:
         point_id = BE_INT.int16(data)
         # Skip message if it is for an unconfigured point
-        if point_id not in self.points:
-            return 3
-        self.points[point_id].status = data[2]
-        LOG.debug("Point updated: %s", self.points[point_id])
+        if point_id in self.points:
+            self.points[point_id].status = data[2]
+            LOG.debug("Point updated: %s", self.points[point_id])
         return 3
     
     def _door_status_consumer(self, data) -> int:
         door_id = BE_INT.int16(data)
         # Skip message if it is for an unconfigured door
-        if door_id not in self.doors:
-            return 3
-        self.doors[door_id].status = data[2]
-        LOG.debug("Door updated: %s", self.doors[door_id])
+        if door_id in self.doors:
+            self.doors[door_id].status = data[2]
+            LOG.debug("Door updated: %s", self.doors[door_id])
         return 3
 
     def _event_summary_consumer(self, data) -> int:
@@ -773,32 +772,36 @@ class Panel:
     def _event_history_consumer(self, data) -> int:
         r = self._history.parse_subscription_event(data)
         self.history_observer._notify()
+        return r
+    def _event_history_finalizer(self):
         # Some panels don't support the subscription for panel status
         # Since the panel creates history events for most faults
         # we can just update faults when we get a history event.
         asyncio.create_task(self._load_faults())
-        return r
 
     def _panel_status_consumer(self, data) -> int:
         self._set_panel_faults(BE_INT.int16(data, 1))
         return 6
 
     def _on_status_update(self, data):
+        # The second callback is invoked after all updates are consumed.
         CONSUMERS = {
-            0x00: lambda data: 0,  # heartbeat
-            0x01: self._event_summary_consumer,
-            0x02: self._event_history_consumer,
-            0x04: self._area_on_off_consumer,
-            0x05: self._area_ready_consumer,
-            0x06: self._output_status_consumer,
-            0x07: self._point_status_consumer,
-            0x08: self._door_status_consumer,
-            0x0a: self._panel_status_consumer
+            0x00: (lambda data: 0, None),  # heartbeat
+            0x01: (self._event_summary_consumer, None),
+            0x02: (self._event_history_consumer, self._event_history_finalizer),
+            0x04: (self._area_on_off_consumer, self._area_on_off_finalizer),
+            0x05: (self._area_ready_consumer, None),
+            0x06: (self._output_status_consumer, self._output_status_finalizer),
+            0x07: (self._point_status_consumer, None),
+            0x08: (self._door_status_consumer, None),
+            0x0a: (self._panel_status_consumer, None)
         }
         pos = 0
         while pos < len(data):
             (update_type, n_updates) = data[pos:pos+2]
             pos += 2
             self._last_msg = datetime.now()
-            consumer = CONSUMERS[update_type]
-            for _ in range(0, n_updates): pos += consumer(data[pos:])
+            consumer, finalizer = CONSUMERS[update_type]
+            for _ in range(0, n_updates):
+                pos += consumer(data[pos:])
+            if finalizer: finalizer()
