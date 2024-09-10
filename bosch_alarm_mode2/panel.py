@@ -166,6 +166,7 @@ class Panel:
         self.points = {}
         self.outputs = {}
         self.doors = {}
+
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
@@ -358,18 +359,34 @@ class Panel:
                 logging.exception("Polling exception")
 
     async def _monitor_connection_once(self):
-        if self._connection:
-            idle_time = datetime.now() - (self._last_msg or datetime.fromtimestamp(0))
-            if idle_time > timedelta(minutes=3):
-                LOG.warning("Heartbeat expired (%s): resetting connection.", idle_time)
-                self._connection.close()
-        else:
+        if not self._connection:
             loaded = self.areas and self.points
             load_selector = self.LOAD_STATUS if loaded else self.LOAD_ALL
             try:
                 await self._connect(load_selector)
             except asyncio.exceptions.TimeoutError as e:
                 LOG.debug("Connection timed out...")
+            return
+
+        idle_time = datetime.now() - (self._last_msg or datetime.fromtimestamp(0))
+        if idle_time > timedelta(minutes=3):
+            LOG.warning("Heartbeat expired (%s): resetting connection.", idle_time)
+            self._connection.close()
+        # Buggy panels sometimes drop responses. This results in requests being
+        # matched to the wrong responses, and getting stuck in the queue.
+        # Detect if this has occurred by checking the response of a known command.
+        stuck_time = datetime.now() - self._connection.pending_last_empty
+        if stuck_time > timedelta(minutes=1):
+            LOG.debug("Checking for command skew (%s)...", stuck_time)
+            try:
+                data = await asyncio.wait_for(
+                        self._connection.send_command(CMD.WHAT_ARE_YOU),
+                        timeout=30)
+            except asyncio.TimeoutError:
+                data = None
+            if not data or data[0] not in PANEL_MODEL or self.model != PANEL_MODEL[data[0]]:
+                LOG.warning("Detected possible command skew: resetting connection.")
+                self._connection.close()
 
     async def _authenticate_remote_user(self):
         try:
