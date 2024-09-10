@@ -730,7 +730,7 @@ class Panel:
     def _area_ready_consumer(self, data) -> int:
         area_id = BE_INT.int16(data)
         # Skip message if it is for an unconfigured area
-        if area_id not in self.areas:
+        if area_id in self.areas:
             ready_status = data[2]
             faults = BE_INT.int16(data, 3)
             self.areas[area_id]._set_ready(ready_status, faults)
