@@ -20,7 +20,7 @@ class Connection(asyncio.Protocol):
         self._buffer = bytearray()
         self._pending = deque()
         self._pending_last_empty = datetime.now()
-        self._command_semaphore = asyncio.Semaphore(1)
+        self.set_max_commands_in_flight(1)
 
     def set_max_commands_in_flight(self, command_count):
         self._command_semaphore = asyncio.Semaphore(command_count)

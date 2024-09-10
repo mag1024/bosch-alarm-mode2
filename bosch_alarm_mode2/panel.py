@@ -464,7 +464,7 @@ class Panel:
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
         # B and G series panels support multiple commands in flight, AMAX and Solution panels do not.
-        if self.model >= 0xA0:
+        if data[0] >= 0xA0:
             self._connection.set_max_commands_in_flight(100)
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
