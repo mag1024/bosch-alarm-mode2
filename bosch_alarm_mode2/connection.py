@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import binascii
+from datetime import datetime
 
 from collections import deque
 
@@ -18,6 +19,7 @@ class Connection(asyncio.Protocol):
         self._transport = None
         self._buffer = bytearray()
         self._pending = deque()
+        self._pending_last_empty = datetime.now()
 
     def connection_made(self, transport):
         self._transport = transport
@@ -48,6 +50,10 @@ class Connection(asyncio.Protocol):
             self._transport.abort()
             self._transport = None
 
+    @property
+    def pending_last_empty(self) -> datetime:
+        return self._pending_last_empty if len(self._pending) else datetime.now()
+
     def _consume_buffer(self):
         while self._buffer:
             msg_len = 0
@@ -69,6 +75,7 @@ class Connection(asyncio.Protocol):
 
     def _process_response(self, data):
         response = self._pending.popleft()
+        if len(self._pending) == 0: self._pending_last_empty = datetime.now()
         if data[0] == 0xFC: response.set_result(None)
         elif data[0] == 0xFD: response.set_exception(Exception("NACK: ", ERROR[data[1]]))
         elif data[0] == 0xFE: response.set_result(data[1:])
