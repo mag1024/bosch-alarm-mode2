@@ -18,7 +18,10 @@ class Connection(asyncio.Protocol):
         self._transport = None
         self._buffer = bytearray()
         self._pending = deque()
-        self._transmit_semaphore = asyncio.Semaphore(1)
+        self._command_semaphore = asyncio.Semaphore(1)
+
+    def set_max_commands_in_flight(self, command_count):
+        self._command_semaphore = asyncio.Semaphore(command_count)
 
     def connection_made(self, transport):
         self._transport = transport
@@ -32,9 +35,9 @@ class Connection(asyncio.Protocol):
         self._buffer += data
         self._consume_buffer()
 
-    async def send_command(self, code, data = bytearray()) -> asyncio.Future:
+    async def send_command(self, code, data = bytearray()) -> bytearray:
         # Some panels don't like receiving multiple commands at once, so we limit commands to only run one at a time
-        async with self._transmit_semaphore:
+        async with self._command_semaphore:
             request = bytearray([self.protocol])
             length_size = 2 if self.protocol == PROTOCOL.EXTENDED else 1
             request.extend((len(data) + 1).to_bytes(length_size, 'big'))
