@@ -323,6 +323,12 @@ class Panel:
         # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
         if not all(area.is_disarmed() for area in self.areas.values()):
             return
+        # Check if the current user has permission to read the event history
+        if self._supports_permission_check:
+            permissions = await self._connection.send_command(
+                CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
+            if not permissions[0]:
+                return
         start_size = len(self.events)
         start_t = time.perf_counter()
         event_id = self._history.last_event_id
@@ -395,11 +401,6 @@ class Panel:
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
             raise PermissionError("Authentication failed, please check your passcode.")
-        if self._supports_permission_check:
-            permissions = await self._connection.send_command(
-                CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
-            if not permissions[0]:
-                raise PermissionError("'Master code functions' authority required")
 
     async def _authenticate_automation_user(self, user_type):
         creds = bytearray([user_type])  # automation user
