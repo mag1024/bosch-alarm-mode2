@@ -38,7 +38,8 @@ class Connection(asyncio.Protocol):
         self._consume_buffer()
 
     async def send_command(self, code, data = bytearray()) -> bytearray:
-        # Some panels don't like receiving multiple commands at once, so we limit commands to only run one at a time
+        # Some panels don't like receiving multiple commands at once 
+        # so we limit the amount of commands that are in flight at a given time
         async with self._command_semaphore:
             request = bytearray([self.protocol])
             length_size = 2 if self.protocol == PROTOCOL.EXTENDED else 1
