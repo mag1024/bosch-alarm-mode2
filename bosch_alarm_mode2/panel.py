@@ -178,7 +178,6 @@ class Panel:
         self._point_text_supported_format = 0
         self._door_text_supported_format = 0
         self._alarm_summary_supported_format = 0
-        self._output_semaphore = asyncio.Semaphore(1)
 
     LOAD_EXTENDED_INFO = 1 << 0
     LOAD_ENTITIES = 1 << 1
@@ -464,6 +463,9 @@ class Panel:
             data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
         self.protocol_version = 'v%d.%d' % (data[5], data[6])
+        # B and G series panels support multiple commands in flight, AMAX and Solution panels do not.
+        if data[0] >= 0xA0:
+            self._connection.set_max_commands_in_flight(100)
         if data[13]:
             LOG.warning('busy flag: %d', data[13])
 
@@ -636,6 +638,7 @@ class Panel:
             point = BE_INT.int16(response_detail, 3)
             if point == 0xFFFF:
                 await self._get_alarms_for_priority(priority, area, point)
+                return
             if area in self.areas:
                 self.areas[area]._set_alarm(priority, True)
             else:
@@ -646,6 +649,7 @@ class Panel:
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
+        
         format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
         data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
@@ -678,14 +682,8 @@ class Panel:
             output.status = OUTPUT_STATUS.ACTIVE if id in enabled else OUTPUT_STATUS.INACTIVE
 
     async def _set_output_state(self, output_id, state):
-        # During testing, it was found that toggling the state of multiple outputs at once
-        # would occasionally stop the panel from responding with a subscription event
-        # to acknowledge the state change. This would mean that home assistant and the 
-        # panel would end up out of sync, but limiting concurrent changes with a semaphore
-        # would stop this from happening.
-        async with self._output_semaphore:
-            request = bytearray([output_id, state])
-            await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
+        request = bytearray([output_id, state])
+        await self._connection.send_command(CMD.SET_OUTPUT_STATE, request)
 
     async def _door_set_state(self, door_id, state):
         request = bytearray([door_id, state])
