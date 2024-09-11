@@ -319,6 +319,9 @@ class Panel:
             await self._load_entity_status(CMD.DOOR_STATUS, self.doors, 1)
 
     async def _load_history(self):
+        # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
+        if not all(area.is_disarmed() for area in self.areas.values()):
+            return
         try:
             start_size = len(self.events)
             start_t = time.perf_counter()
@@ -334,7 +337,9 @@ class Panel:
                 LOG.debug("Loaded %d history events in %.2fs" % (
                     len(self.events) - start_size, time.perf_counter() - start_t))
         except Exception:
-            LOG.exception("Failed to load history events")
+            if not self._history.has_errored:
+                LOG.warning("Failed to load history events; ensure your user has the 'master code functions' authority.")
+                self._history.has_errored = True
 
     async def _monitor_connection(self):
         while True:
