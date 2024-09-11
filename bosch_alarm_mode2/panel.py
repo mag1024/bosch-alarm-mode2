@@ -170,7 +170,6 @@ class Panel:
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
-        self._supports_permission_check = False
         self._supports_door = False
         self._set_subscription_supported_format = 0
         self._area_text_supported_format = 0
@@ -323,19 +322,24 @@ class Panel:
         # Don't retrieve history when in any state that isn't disarmed, as panels do not support this.
         if not all(area.is_disarmed() for area in self.areas.values()):
             return
-        start_size = len(self.events)
-        start_t = time.perf_counter()
-        event_id = self._history.last_event_id
-        while event_id is not None:
-            request = bytearray(b'\xFF')
-            request.extend(event_id.to_bytes(4, 'big'))
-            data = await self._connection.send_command(self._history_cmd, request)
-            self._last_msg = datetime.now()
-            if (event_id := self._history.parse_polled_events(data)):
-                self.history_observer._notify()
-        if len(self.events) != start_size:
-            LOG.debug("Loaded %d history events in %.2fs" % (
-                len(self.events) - start_size, time.perf_counter() - start_t))
+        try:
+            start_size = len(self.events)
+            start_t = time.perf_counter()
+            event_id = self._history.last_event_id
+            while event_id is not None:
+                request = bytearray(b'\xFF')
+                request.extend(event_id.to_bytes(4, 'big'))
+                data = await self._connection.send_command(self._history_cmd, request)
+                self._last_msg = datetime.now()
+                if (event_id := self._history.parse_polled_events(data)):
+                    self.history_observer._notify()
+            if len(self.events) != start_size:
+                LOG.debug("Loaded %d history events in %.2fs" % (
+                    len(self.events) - start_size, time.perf_counter() - start_t))
+        except Exception:
+            if not self._history.has_errored:
+                LOG.warning("Failed to load history events; ensure your user has the 'master code functions' authority.")
+                self._history.has_errored = True
 
     async def _monitor_connection(self):
         while True:
@@ -395,11 +399,6 @@ class Panel:
             await self._connection.send_command(CMD.LOGIN_REMOTE_USER, creds)
         except Exception:
             raise PermissionError("Authentication failed, please check your passcode.")
-        if self._supports_permission_check:
-            permissions = await self._connection.send_command(
-                CMD.REQUEST_PERMISSION_FOR_PANEL_ACTION, bytearray([AUTHORITY_TYPE.GET_HISTORY]))
-            if not permissions[0]:
-                raise PermissionError("'Master code functions' authority required")
 
     async def _authenticate_automation_user(self, user_type):
         creds = bytearray([user_type])  # automation user
@@ -495,7 +494,6 @@ class Panel:
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
         self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
         self._set_subscription_supported_format = max(_supported_format(bitmask[24],[(0x40, 2)]), _supported_format(bitmask[16], [(0x20, 1)]))
-        self._supports_permission_check = bitmask[2] & 0x80
         self._history.init_for_panel(data[0])
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else

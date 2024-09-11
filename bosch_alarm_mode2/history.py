@@ -25,6 +25,7 @@ class History:
         self._events = []
         self._parser = None
         self._max_count = 0
+        self.has_errored = False
 
     @property
     def events(self):
