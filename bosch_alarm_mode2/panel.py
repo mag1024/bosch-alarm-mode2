@@ -170,7 +170,6 @@ class Panel:
         self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
         self._all_arming_id = AREA_ARMING_MASTER_DELAY
         self._supports_serial = False
-        self._supports_permission_check = False
         self._supports_door = False
         self._set_subscription_supported_format = 0
         self._area_text_supported_format = 0
@@ -490,7 +489,6 @@ class Panel:
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
         self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
         self._set_subscription_supported_format = max(_supported_format(bitmask[24],[(0x40, 2)]), _supported_format(bitmask[16], [(0x20, 1)]))
-        self._supports_permission_check = bitmask[2] & 0x80
         self._history.init_for_panel(data[0])
         self._history_cmd = (
                 CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
