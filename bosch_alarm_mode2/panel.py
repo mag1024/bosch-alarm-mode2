@@ -469,7 +469,7 @@ class Panel:
             LOG.warning('busy flag: %d', data[13])
 
         # Solution and AMAX panels use different arming types from B/G series panels.
-        if data[0] <= 0x24:
+        if data[0] <= 0x28:
             self._partial_arming_id = AREA_ARMING_STAY1
             self._all_arming_id = AREA_ARMING_AWAY
         else:
