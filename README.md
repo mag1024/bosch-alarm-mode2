@@ -1,4 +1,4 @@
-A async Python library for interating with Bosch Alarm Panels supporting the "Mode 2" API.
+An async Python library for interacting with Bosch Alarm Panels supporting the "Mode 2" API.
 
 Theoretically, the following models support this protocol: Solution 2000/3000/4000, B4512/B5512, B8512G/B9512G, AMAX 2100/3000/4000, D7412GV4/D9412GV4
 
