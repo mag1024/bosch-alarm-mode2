@@ -122,7 +122,7 @@ class Door(PanelEntity):
 
     def __repr__(self):
         return f"{self.name}: {DOOR_STATUS.TEXT[self.status]}"
-    
+
 
 class Output(PanelEntity):
     def __init__(self, name = None, status = OUTPUT_STATUS.UNKNOWN):
@@ -259,7 +259,7 @@ class Panel:
         if self.firmware_version: print('Firmware version:', self.firmware_version)
         if self.protocol_version: print('Protocol version:', self.protocol_version)
         if self.serial_number: print('Serial number:', self.serial_number)
-        if self._faults_bitmap: 
+        if self._faults_bitmap:
             print('Faults:')
             print(*self.panel_faults, sep="\n")
         if self.areas:
@@ -448,7 +448,7 @@ class Panel:
                     "The Automation code is required for B/G panels")
             # B/G series panels only require the automation code
             self._installer_or_user_code = None
-            
+
         if self._automation_code:
             await self._authenticate_automation_user(user_type)
         if self._installer_or_user_code:
@@ -539,7 +539,7 @@ class Panel:
 
     async def _load_outputs(self):
         names = await self._load_names(
-            CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS, 
+            CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS,
             self._output_text_supported_format,
             "OUTPUT", 1
         )
@@ -547,7 +547,7 @@ class Panel:
 
     async def _load_areas(self):
         names = await self._load_names(
-            CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS, 
+            CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS,
             self._area_text_supported_format,
             "AREA"
         )
@@ -555,8 +555,8 @@ class Panel:
 
     async def _load_points(self):
         names = await self._load_names(
-            CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS, 
-            self._point_text_supported_format, 
+            CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS,
+            self._point_text_supported_format,
             "POINT"
         )
         self.points = {id: Point(name) for id, name in names.items()}
@@ -565,8 +565,8 @@ class Panel:
         if not self._supports_door:
             return
         names = await self._load_names(
-            CMD.DOOR_TEXT, CMD.REQUEST_CONFIGURED_DOORS, 
-            self._door_text_supported_format, 
+            CMD.DOOR_TEXT, CMD.REQUEST_CONFIGURED_DOORS,
+            self._door_text_supported_format,
             "DOOR",
             1
         )
@@ -614,13 +614,13 @@ class Panel:
 
     async def _load_names(self, name_cmd, config_cmd, supported_format, type, id_size=2) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
-        
+
         if supported_format == 3:
             return await self._load_names_cf03(name_cmd, enabled_ids)
 
         if supported_format == 1:
             return await self._load_names_cf01(name_cmd, enabled_ids, id_size)
-        
+
         # And then if CF01 isn't available, we can just generate a list of names and return that
         return {id: f"{type}{id}" for id in enabled_ids}
 
@@ -647,7 +647,7 @@ class Panel:
     async def _load_alarm_status(self):
         if not self._alarm_summary_supported_format:
             return
-        
+
         format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
         data = await self._connection.send_command(CMD.ALARM_MEMORY_SUMMARY, format)
         for priority in ALARM_MEMORY_PRIORITIES.keys():
@@ -718,12 +718,15 @@ class Panel:
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
         return 3
+    async def _delayed_load_history(self):
+        # Some panels seem prone to dropping commands while disarming.
+        await asyncio.sleep(30)
+        await self._load_history()
     def _area_on_off_finalizer(self):
-        # Retrieve panel history, as it is possible that a panel may have been armed during 
-        # initialisation, and history can not be retrived when a panel is armed.
-        asyncio.create_task(self._load_history())
-        # Some panels rely on history updates to update faults, so we need to update faults as well.
-        asyncio.create_task(self._load_faults())
+        # If the panel was armed, it is possible that the history was not loaded
+        # during startup
+        if len(self.events) == 0:
+            asyncio.create_task(self._delayed_load_history())
 
     def _area_ready_consumer(self, data) -> int:
         area_id = BE_INT.int16(data)
@@ -737,13 +740,13 @@ class Panel:
         return 5
 
     # Solution panels send events with output ids that don't match those
-    # used by the rest of the commands. This means we can't actually rely 
+    # used by the rest of the commands. This means we can't actually rely
     # on the data from the subscription event and instead need to poll for output status
     def _output_status_consumer(self, data) -> int:
         return 3
     def _output_status_finalizer(self):
         asyncio.create_task(self._load_output_status())
-    
+
     def _point_status_consumer(self, data) -> int:
         point_id = BE_INT.int16(data)
         # Skip message if it is for an unconfigured point
@@ -751,7 +754,7 @@ class Panel:
             self.points[point_id].status = data[2]
             LOG.debug("Point updated: %s", self.points[point_id])
         return 3
-    
+
     def _door_status_consumer(self, data) -> int:
         door_id = BE_INT.int16(data)
         # Skip message if it is for an unconfigured door
