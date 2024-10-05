@@ -632,7 +632,6 @@ class Panel:
         response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
         while response_detail:
             area = BE_INT.int16(response_detail)
-            # item_type = response_detail[2]
             point = BE_INT.int16(response_detail, 3)
             if point == 0xFFFF:
                 await self._get_alarms_for_priority(priority, area, point)
@@ -663,15 +662,23 @@ class Panel:
     async def _load_entity_status(self, status_cmd, entities, id_size=2):
         if not entities:
             return
-        request = bytearray()
-        for id in entities.keys(): request.extend(id.to_bytes(id_size, 'big'))
-        response = await self._connection.send_command(status_cmd, request)
-        while response:
-            if id_size == 2:
-                entities[BE_INT.int16(response)].status = response[2]
-            else:
-                entities[response[0]].status = response[1]
-            response = response[id_size+1:]
+
+        def chunk(entities, size):
+            keys = list(entities.keys())
+            for i in range(0, len(keys), size):
+                yield keys[i:i + size]
+
+        for id_chunk in chunk(entities, CMD_REQUEST_MAX[status_cmd]):
+            request = bytearray()
+            for id in id_chunk: request.extend(id.to_bytes(id_size, 'big'))
+            response = await self._connection.send_command(status_cmd, request)
+            while response:
+                if id_size == 2:
+                    entities[BE_INT.int16(response)].status = response[2]
+                else:
+                    entities[response[0]].status = response[1]
+                response = response[id_size+1:]
+
     async def _load_output_status(self):
         if not self.outputs:
             return

@@ -240,6 +240,14 @@ class CMD:
     SET_DATE_TIME = 0x11
     REQUEST_DATE_TIME = 0x12
 
+# Some commands have a limit on how many entities can be requested at a time.
+CMD_REQUEST_MAX = {
+    CMD.AREA_STATUS: 50,
+    CMD.DOOR_STATUS: 32,
+    CMD.OUTPUT_STATUS: 600,
+    CMD.POINT_STATUS: 66,
+}
+
 class PROTOCOL:
     BASIC = 0x01
     EXTENDED = 0x04
