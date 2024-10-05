@@ -1,6 +1,6 @@
 .PHONY: install clean
 
-build:
+dist:
 	poetry build
 
 clean:
