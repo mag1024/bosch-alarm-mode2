@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bosch-alarm-mode2"
-version = "0.4.0"
+version = "0.4.1"
 description = "An async Python library for interacting with Bosch Alarm Panels supporting the 'Mode 2' API."
 authors = ["Michael Grigoriev <mag@luminal.org>"]
 
