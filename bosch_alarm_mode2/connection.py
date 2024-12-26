@@ -26,6 +26,7 @@ class Connection(asyncio.Protocol):
         self._command_semaphore = asyncio.Semaphore(command_count)
 
     def connection_made(self, transport):
+        LOG.info("Connection established.")
         self._transport = transport
 
     def connection_lost(self, exc):
