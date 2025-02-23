@@ -14,13 +14,15 @@ LOG = logging.getLogger(__name__)
 ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
-ssl_context.set_ciphers('DEFAULT')
+ssl_context.set_ciphers("DEFAULT")
+
 
 def _supported_format(value, masks):
     for mask, format in masks:
         if value & mask:
             return format
     return 0
+
 
 class PanelEntity:
     def __init__(self, name, status):
@@ -37,8 +39,9 @@ class PanelEntity:
         self._status = value
         self.status_observer._notify()
 
+
 class Area(PanelEntity):
-    def __init__(self, name = None, status = AREA_STATUS.UNKNOWN):
+    def __init__(self, name=None, status=AREA_STATUS.UNKNOWN):
         PanelEntity.__init__(self, name, status)
         self.ready_observer = Observable()
         self.alarm_observer = Observable()
@@ -46,13 +49,20 @@ class Area(PanelEntity):
         self._alarms = set()
 
     @property
-    def all_ready(self): return self._ready == AREA_READY_ALL
+    def all_ready(self):
+        return self._ready == AREA_READY_ALL
+
     @property
-    def part_ready(self): return self._ready == AREA_READY_PART
+    def part_ready(self):
+        return self._ready == AREA_READY_PART
+
     @property
-    def faults(self): return self._faults
+    def faults(self):
+        return self._faults
+
     @property
-    def alarms(self): return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
+    def alarms(self):
+        return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
 
     def _set_ready(self, ready, faults):
         self._ready = ready
@@ -68,18 +78,26 @@ class Area(PanelEntity):
 
     def is_disarmed(self):
         return self.status == AREA_STATUS.DISARMED
+
     def is_arming(self):
         return self.status in AREA_STATUS.ARMING
+
     def is_pending(self):
         return self.status in AREA_STATUS.PENDING
+
     def is_part_armed(self):
         return self.status in AREA_STATUS.PART_ARMED
+
     def is_all_armed(self):
         return self.status in AREA_STATUS.ALL_ARMED
+
     def is_armed(self):
         return self.status in AREA_STATUS.ARMED
+
     def is_triggered(self):
-        return (self.is_armed() or self.is_pending()) and self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
+        return (self.is_armed() or self.is_pending()) and self._alarms.intersection(
+            ALARM_MEMORY_PRIORITY_ALARMS
+        )
 
     def reset(self):
         self.status = AREA_STATUS.UNKNOWN
@@ -88,11 +106,15 @@ class Area(PanelEntity):
 
     def __repr__(self):
         return "%s: %s [%s] (%d)" % (
-            self.name, AREA_STATUS.TEXT[self.status],
-            AREA_READY[self._ready], self._faults)
+            self.name,
+            AREA_STATUS.TEXT[self.status],
+            AREA_READY[self._ready],
+            self._faults,
+        )
+
 
 class Point(PanelEntity):
-    def __init__(self, name = None, status = POINT_STATUS.UNKNOWN):
+    def __init__(self, name=None, status=POINT_STATUS.UNKNOWN):
         PanelEntity.__init__(self, name, status)
 
     def is_open(self) -> bool:
@@ -107,8 +129,9 @@ class Point(PanelEntity):
     def __repr__(self):
         return f"{self.name}: {POINT_STATUS.TEXT[self.status]}"
 
+
 class Door(PanelEntity):
-    def __init__(self, name = None, status = DOOR_STATUS.UNKNOWN):
+    def __init__(self, name=None, status=DOOR_STATUS.UNKNOWN):
         PanelEntity.__init__(self, name, status)
 
     def is_open(self) -> bool:
@@ -125,7 +148,7 @@ class Door(PanelEntity):
 
 
 class Output(PanelEntity):
-    def __init__(self, name = None, status = OUTPUT_STATUS.UNKNOWN):
+    def __init__(self, name=None, status=OUTPUT_STATUS.UNKNOWN):
         PanelEntity.__init__(self, name, status)
 
     def is_active(self) -> bool:
@@ -137,8 +160,9 @@ class Output(PanelEntity):
     def __repr__(self):
         return f"{self.name}: {OUTPUT_STATUS.TEXT[self.status]}"
 
+
 class Panel:
-    """ Connection to a Bosch Alarm Panel using the "Mode 2" API. """
+    """Connection to a Bosch Alarm Panel using the "Mode 2" API."""
 
     def __init__(self, host, port, automation_code, installer_or_user_code):
         LOG.debug("Panel created")
@@ -183,7 +207,7 @@ class Panel:
     LOAD_STATUS = 1 << 2
     LOAD_ALL = LOAD_EXTENDED_INFO | LOAD_ENTITIES | LOAD_STATUS
 
-    async def connect(self, load_selector = LOAD_ALL):
+    async def connect(self, load_selector=LOAD_ALL):
         loop = asyncio.get_running_loop()
         self._monitor_connection_task = loop.create_task(self._monitor_connection())
         await self._connect(load_selector)
@@ -203,8 +227,7 @@ class Panel:
             else:
                 loop = asyncio.get_running_loop()
                 self._poll_task = loop.create_task(self._poll())
-                LOG.info(
-                    "Panel does not support subscriptions, falling back to polling")
+                LOG.info("Panel does not support subscriptions, falling back to polling")
 
     @property
     def events(self) -> list[HistoryEvent]:
@@ -219,7 +242,8 @@ class Panel:
                 pass
             finally:
                 self._monitor_connection_task = None
-        if self._connection: self._connection.close()
+        if self._connection:
+            self._connection.close()
 
     async def area_disarm(self, area_id):
         await self._area_arm(area_id, AREA_ARMING_DISARM)
@@ -255,38 +279,49 @@ class Panel:
         return self._connection is not None and self.points and self.areas
 
     def print(self):
-        if self.model: print('Model:', self.model)
-        if self.firmware_version: print('Firmware version:', self.firmware_version)
-        if self.protocol_version: print('Protocol version:', self.protocol_version)
-        if self.serial_number: print('Serial number:', self.serial_number)
+        if self.model:
+            print("Model:", self.model)
+        if self.firmware_version:
+            print("Firmware version:", self.firmware_version)
+        if self.protocol_version:
+            print("Protocol version:", self.protocol_version)
+        if self.serial_number:
+            print("Serial number:", self.serial_number)
         if self._faults_bitmap:
-            print('Faults:')
+            print("Faults:")
             print(*self.panel_faults, sep="\n")
         if self.areas:
-            print('Areas:')
+            print("Areas:")
             print(self.areas)
         if self.points:
-            print('Points:')
+            print("Points:")
             print(self.points)
         if self.doors:
-            print('Doors:')
+            print("Doors:")
             print(self.doors)
         if self.outputs:
-            print('Outputs:')
+            print("Outputs:")
             print(self.outputs)
         if self.events:
-            print('Events:')
+            print("Events:")
             print(*self.events, sep="\n")
 
     async def _connect(self, load_selector):
-        LOG.info('Connecting to %s:%d...', self._host, self._port)
-        def connection_factory(): return Connection(
-                self._installer_or_user_code, self._on_status_update, self._on_disconnect)
+        LOG.info("Connecting to %s:%d...", self._host, self._port)
+
+        def connection_factory():
+            return Connection(
+                self._installer_or_user_code,
+                self._on_status_update,
+                self._on_disconnect,
+            )
+
         _, connection = await asyncio.wait_for(
-                asyncio.get_running_loop().create_connection(
-                    connection_factory,
-                    host=self._host, port=self._port, ssl=ssl_context),
-                timeout=30)
+            asyncio.get_running_loop().create_connection(
+                connection_factory, host=self._host, port=self._port, ssl=ssl_context
+            ),
+            timeout=30,
+        )
         self._last_msg = datetime.now()
         self._connection = connection
         await self._basicinfo()
@@ -327,18 +362,22 @@ class Panel:
             start_t = time.perf_counter()
             event_id = self._history.last_event_id
             while event_id is not None:
-                request = bytearray(b'\xFF')
-                request.extend(event_id.to_bytes(4, 'big'))
+                request = bytearray(b"\xff")
+                request.extend(event_id.to_bytes(4, "big"))
                 data = await self._connection.send_command(self._history_cmd, request)
                 self._last_msg = datetime.now()
-                if (event_id := self._history.parse_polled_events(data)):
+                if event_id := self._history.parse_polled_events(data):
                     self.history_observer._notify()
             if len(self.events) != start_size:
-                LOG.debug("Loaded %d history events in %.2fs" % (
-                    len(self.events) - start_size, time.perf_counter() - start_t))
+                LOG.debug(
+                    "Loaded %d history events in %.2fs"
+                    % (len(self.events) - start_size, time.perf_counter() - start_t)
+                )
         except Exception:
             if not self._history.has_errored:
-                LOG.warning("Failed to load history events; ensure your user has the 'master code functions' authority.")
+                LOG.warning(
+                    "Failed to load history events; ensure your user has the 'master code functions' authority."
+                )
                 self._history.has_errored = True
 
     async def _monitor_connection(self):
@@ -368,7 +407,7 @@ class Panel:
             load_selector = self.LOAD_STATUS if loaded else self.LOAD_ALL
             try:
                 await self._connect(load_selector)
-            except asyncio.exceptions.TimeoutError as e:
+            except asyncio.exceptions.TimeoutError:
                 LOG.debug("Connection timed out...")
             return
 
@@ -384,8 +423,8 @@ class Panel:
             LOG.debug("Checking for command skew (%s)...", stuck_time)
             try:
                 data = await asyncio.wait_for(
-                        self._connection.send_command(CMD.WHAT_ARE_YOU),
-                        timeout=30)
+                    self._connection.send_command(CMD.WHAT_ARE_YOU), timeout=30
+                )
             except asyncio.TimeoutError:
                 data = None
             if not data or data[0] not in PANEL_MODEL or self.model != PANEL_MODEL[data[0]]:
@@ -403,49 +442,40 @@ class Panel:
     async def _authenticate_automation_user(self, user_type):
         creds = bytearray([user_type])  # automation user
         creds.extend(map(ord, self._automation_code))
-        creds.append(0x00) # null terminate
+        creds.append(0x00)  # null terminate
         result = await self._connection.send_command(CMD.AUTHENTICATE, creds)
         if result and result[0] == 0x01:
             return
 
         self._connection.close()
-        error = ["Not Authorized", "Authorized",
-                "Max Connections"][result[0] if result else 0]
+        error = ["Not Authorized", "Authorized", "Max Connections"][result[0] if result else 0]
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self):
         user_type = USER_TYPE.AUTOMATION
         if "Solution" in self.model:
             if not self._installer_or_user_code:
-                raise ValueError(
-                    "The user code is required for Solution panels")
+                raise ValueError("The user code is required for Solution panels")
             if not self._installer_or_user_code.isnumeric():
-                raise ValueError(
-                    "The user code should only contain numerical digits.")
+                raise ValueError("The user code should only contain numerical digits.")
             if len(self._installer_or_user_code) > 8:
-                raise ValueError(
-                    "The user code has a maximum length of 8 digits.")
+                raise ValueError("The user code has a maximum length of 8 digits.")
             # Solution panels don't require an automation code
             self._automation_code = None
         elif "AMAX" in self.model:
             if not self._installer_or_user_code:
-                raise ValueError(
-                    "The installer code is required for AMAX panels")
+                raise ValueError("The installer code is required for AMAX panels")
             if not self._automation_code:
-                raise ValueError(
-                    "The Automation code is required for AMAX panels")
+                raise ValueError("The Automation code is required for AMAX panels")
             if not self._installer_or_user_code.isnumeric():
-                raise ValueError(
-                    "The installer code should only contain numerical digits.")
+                raise ValueError("The installer code should only contain numerical digits.")
             if len(self._installer_or_user_code) > 8:
-                raise ValueError(
-                    "The installer code has a maximum length of 8 digits.")
+                raise ValueError("The installer code has a maximum length of 8 digits.")
             # AMAX panels require a user type of installer app, not automation
             user_type = USER_TYPE.INSTALLER_APP
         else:
             if not self._automation_code:
-                raise ValueError(
-                    "The Automation code is required for B/G panels")
+                raise ValueError("The Automation code is required for B/G panels")
             # B/G series panels only require the automation code
             self._installer_or_user_code = None
 
@@ -461,12 +491,12 @@ class Panel:
             # If the panel doesn't support CF03, then use CF01
             data = await self._connection.send_command(CMD.WHAT_ARE_YOU)
         self.model = PANEL_MODEL[data[0]]
-        self.protocol_version = 'v%d.%d' % (data[5], data[6])
+        self.protocol_version = "v%d.%d" % (data[5], data[6])
         # B and G series panels support multiple commands in flight, AMAX and Solution panels do not.
         if data[0] >= 0xA0:
             self._connection.set_max_commands_in_flight(100)
         if data[13]:
-            LOG.warning('busy flag: %d', data[13])
+            LOG.warning("busy flag: %d", data[13])
 
         # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x28:
@@ -476,7 +506,7 @@ class Panel:
             self._partial_arming_id = AREA_ARMING_PERIMETER_DELAY
             self._all_arming_id = AREA_ARMING_MASTER_DELAY
         # Section 13.2 of the protocol spec.
-        bitmask = data[23:].ljust(33, b'\0')
+        bitmask = data[23:].ljust(33, b"\0")
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
         # there is a bug with the extended protocol that leads to long events
         # being truncated in some cases, so we have disabled it for the moment.
@@ -493,11 +523,16 @@ class Panel:
         self._output_text_supported_format = _supported_format(bitmask[9], [(0x10, 3), (0x40, 1)])
         self._point_text_supported_format = _supported_format(bitmask[11], [(0x20, 3), (0x80, 1)])
         self._alarm_summary_supported_format = _supported_format(bitmask[2], [(0x10, 2), (0x20, 1)])
-        self._set_subscription_supported_format = max(_supported_format(bitmask[24],[(0x40, 2)]), _supported_format(bitmask[16], [(0x20, 1)]))
+        self._set_subscription_supported_format = max(
+            _supported_format(bitmask[24], [(0x40, 2)]),
+            _supported_format(bitmask[16], [(0x20, 1)]),
+        )
         self._history.init_for_panel(data[0])
         self._history_cmd = (
-                CMD.REQUEST_RAW_HISTORY_EVENTS_EXT if bitmask[16] & 0x02 else
-                CMD.REQUEST_RAW_HISTORY_EVENTS)
+            CMD.REQUEST_RAW_HISTORY_EVENTS_EXT
+            if bitmask[16] & 0x02
+            else CMD.REQUEST_RAW_HISTORY_EVENTS
+        )
 
     async def set_panel_date(self, date: datetime):
         year = date.year
@@ -505,24 +540,23 @@ class Panel:
             raise ValueError("Bosch alarm panels only support years between 2010 and 2037")
         year = year - 2000
         await self._connection.send_command(
-                CMD.SET_DATE_TIME, bytearray([date.month, date.day, year, date.hour, date.minute]))
+            CMD.SET_DATE_TIME,
+            bytearray([date.month, date.day, year, date.hour, date.minute]),
+        )
 
     async def get_panel_date(self) -> datetime:
-        data = await self._connection.send_command(
-                CMD.REQUEST_DATE_TIME)
+        data = await self._connection.send_command(CMD.REQUEST_DATE_TIME)
         return datetime(data[2] + 2000, data[0], data[1], data[3], data[4])
 
     async def _extended_info(self):
         if self._supports_serial:  # supports serial read
-            data = await self._connection.send_command(
-                CMD.PRODUCT_SERIAL, b'\x00\x00')
-            self.serial_number = int.from_bytes(data[0:6], 'big')
+            data = await self._connection.send_command(CMD.PRODUCT_SERIAL, b"\x00\x00")
+            self.serial_number = int.from_bytes(data[0:6], "big")
         if self._supports_status:
-            data = await self._connection.send_command(
-                CMD.REQUEST_PANEL_SYSTEM_STATUS)
+            data = await self._connection.send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
             version = data[0]
-            revision = int.from_bytes(data[1:2], 'big')
-            self.firmware_version = 'v%d.%d' % (version, revision)
+            revision = int.from_bytes(data[1:2], "big")
+            self.firmware_version = "v%d.%d" % (version, revision)
 
     def _set_panel_faults(self, faults):
         self._faults_bitmap = faults
@@ -539,25 +573,29 @@ class Panel:
 
     async def _load_outputs(self):
         names = await self._load_names(
-            CMD.OUTPUT_TEXT, CMD.REQUEST_CONFIGURED_OUTPUTS,
+            CMD.OUTPUT_TEXT,
+            CMD.REQUEST_CONFIGURED_OUTPUTS,
             self._output_text_supported_format,
-            "OUTPUT", 1
+            "OUTPUT",
+            1,
         )
         self.outputs = {id: Output(name) for id, name in names.items()}
 
     async def _load_areas(self):
         names = await self._load_names(
-            CMD.AREA_TEXT, CMD.REQUEST_CONFIGURED_AREAS,
+            CMD.AREA_TEXT,
+            CMD.REQUEST_CONFIGURED_AREAS,
             self._area_text_supported_format,
-            "AREA"
+            "AREA",
         )
         self.areas = {id: Area(name) for id, name in names.items()}
 
     async def _load_points(self):
         names = await self._load_names(
-            CMD.POINT_TEXT, CMD.REQUEST_CONFIGURED_POINTS,
+            CMD.POINT_TEXT,
+            CMD.REQUEST_CONFIGURED_POINTS,
             self._point_text_supported_format,
-            "POINT"
+            "POINT",
         )
         self.points = {id: Point(name) for id, name in names.items()}
 
@@ -565,10 +603,11 @@ class Panel:
         if not self._supports_door:
             return
         names = await self._load_names(
-            CMD.DOOR_TEXT, CMD.REQUEST_CONFIGURED_DOORS,
+            CMD.DOOR_TEXT,
+            CMD.REQUEST_CONFIGURED_DOORS,
             self._door_text_supported_format,
             "DOOR",
-            1
+            1,
         )
         self.doors = {id: Door(name) for id, name in names.items()}
 
@@ -576,26 +615,27 @@ class Panel:
         id = 0
         names = {}
         while True:
-            request = bytearray(id.to_bytes(2, 'big'))
+            request = bytearray(id.to_bytes(2, "big"))
             request.append(0x00)  # primary language
             request.append(0x01)  # return many
             data = await self._connection.send_command(name_cmd, request)
-            if not data: break
+            if not data:
+                break
             while data:
                 id = BE_INT.int16(data)
-                name, data = data[2:].split(b'\x00', 1)
+                name, data = data[2:].split(b"\x00", 1)
                 if id in enabled_ids:
-                    names[id] = name.decode('utf8')
+                    names[id] = name.decode("utf8")
         return names
 
     async def _load_names_cf01(self, name_cmd, enabled_ids, id_size=2) -> dict[int, str]:
         names = {}
         for id in enabled_ids:
-            request = bytearray(id.to_bytes(id_size, 'big'))
+            request = bytearray(id.to_bytes(id_size, "big"))
             request.append(0x00)  # primary language
             data = await self._connection.send_command(name_cmd, request)
-            name = data.split(b'\x00', 1)[0]
-            names[id] = name.decode('utf8')
+            name = data.split(b"\x00", 1)[0]
+            names[id] = name.decode("utf8")
         return names
 
     async def _load_entity_set(self, cmd) -> [int]:
@@ -612,7 +652,9 @@ class Panel:
             index += 8
         return ids
 
-    async def _load_names(self, name_cmd, config_cmd, supported_format, type, id_size=2) -> dict[int, str]:
+    async def _load_names(
+        self, name_cmd, config_cmd, supported_format, type, id_size=2
+    ) -> dict[int, str]:
         enabled_ids = await self._load_entity_set(config_cmd)
 
         if supported_format == 3:
@@ -627,8 +669,8 @@ class Panel:
     async def _get_alarms_for_priority(self, priority, last_area=None, last_point=None):
         request = bytearray([priority])
         if last_area and last_point:
-            request.append(last_area.to_bytes(2, 'big'))
-            request.append(last_point.to_bytes(2, 'big'))
+            request.append(last_area.to_bytes(2, "big"))
+            request.append(last_point.to_bytes(2, "big"))
         response_detail = await self._connection.send_command(CMD.ALARM_MEMORY_DETAIL, request)
         while response_detail:
             area = BE_INT.int16(response_detail)
@@ -640,7 +682,8 @@ class Panel:
                 self.areas[area]._set_alarm(priority, True)
             else:
                 LOG.warning(
-                    f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]")
+                    f"Found unknown area {area}, supported areas: [{list(self.areas.keys())}]"
+                )
             response_detail = response_detail[5:]
 
     async def _load_alarm_status(self):
@@ -666,18 +709,19 @@ class Panel:
         def chunk(entities, size):
             keys = list(entities.keys())
             for i in range(0, len(keys), size):
-                yield keys[i:i + size]
+                yield keys[i : i + size]
 
         for id_chunk in chunk(entities, CMD_REQUEST_MAX[status_cmd]):
             request = bytearray()
-            for id in id_chunk: request.extend(id.to_bytes(id_size, 'big'))
+            for id in id_chunk:
+                request.extend(id.to_bytes(id_size, "big"))
             response = await self._connection.send_command(status_cmd, request)
             while response:
                 if id_size == 2:
                     entities[BE_INT.int16(response)].status = response[2]
                 else:
                     entities[response[0]].status = response[1]
-                response = response[id_size+1:]
+                response = response[id_size + 1 :]
 
     async def _load_output_status(self):
         if not self.outputs:
@@ -697,27 +741,27 @@ class Panel:
     async def _area_arm(self, area_id, arm_type):
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
-        request.extend(bytearray((area_id-1)//8)) # leading 0 bytes
-        request.append(1 << (7-((area_id-1) % 8))) # i%8-th bit from the left (top) set
+        request.extend(bytearray((area_id - 1) // 8))  # leading 0 bytes
+        request.append(1 << (7 - ((area_id - 1) % 8)))  # i%8-th bit from the left (top) set
         await self._connection.send_command(CMD.AREA_ARM, request)
 
     async def _subscribe(self):
-        IGNORE = b'\x00'
-        SUBSCRIBE = b'\x01'
-        data = bytearray([self._set_subscription_supported_format]) # format
-        data += SUBSCRIBE # confidence / heartbeat
-        data += SUBSCRIBE # event mem
-        data += SUBSCRIBE # event log
-        data += IGNORE    # config change
-        data += SUBSCRIBE # area on/off
-        data += SUBSCRIBE # area ready
-        data += SUBSCRIBE # output status
-        data += SUBSCRIBE # point status
-        data += SUBSCRIBE # door status
-        data += IGNORE    # walk test state (unused)
+        IGNORE = b"\x00"
+        SUBSCRIBE = b"\x01"
+        data = bytearray([self._set_subscription_supported_format])  # format
+        data += SUBSCRIBE  # confidence / heartbeat
+        data += SUBSCRIBE  # event mem
+        data += SUBSCRIBE  # event log
+        data += IGNORE  # config change
+        data += SUBSCRIBE  # area on/off
+        data += SUBSCRIBE  # area ready
+        data += SUBSCRIBE  # output status
+        data += SUBSCRIBE  # point status
+        data += SUBSCRIBE  # door status
+        data += IGNORE  # walk test state (unused)
         if self._set_subscription_supported_format == 2:
-            data += SUBSCRIBE # panel system status
-            data += IGNORE    # wireless learn mode state (unused)
+            data += SUBSCRIBE  # panel system status
+            data += IGNORE  # wireless learn mode state (unused)
         await self._connection.send_command(CMD.SET_SUBSCRIPTION, data)
 
     def _area_on_off_consumer(self, data) -> int:
@@ -725,10 +769,12 @@ class Panel:
         area_status = self.areas[area_id].status = data[2]
         LOG.debug("Area %d: %s" % (area_id, AREA_STATUS.TEXT[area_status]))
         return 3
+
     async def _delayed_load_history(self):
         # Some panels seem prone to dropping commands while disarming.
         await asyncio.sleep(30)
         await self._load_history()
+
     def _area_on_off_finalizer(self):
         # If the panel was armed, it is possible that the history was not loaded
         # during startup
@@ -742,8 +788,7 @@ class Panel:
             ready_status = data[2]
             faults = BE_INT.int16(data, 3)
             self.areas[area_id]._set_ready(ready_status, faults)
-            LOG.debug("Area %d: %s (%d faults)" % (
-                area_id, AREA_READY[ready_status], faults))
+            LOG.debug("Area %d: %s (%d faults)" % (area_id, AREA_READY[ready_status], faults))
         return 5
 
     # Solution panels send events with output ids that don't match those
@@ -751,6 +796,7 @@ class Panel:
     # on the data from the subscription event and instead need to poll for output status
     def _output_status_consumer(self, data) -> int:
         return 3
+
     def _output_status_finalizer(self):
         asyncio.create_task(self._load_output_status())
 
@@ -785,6 +831,7 @@ class Panel:
         r = self._history.parse_subscription_event(data)
         self.history_observer._notify()
         return r
+
     def _event_history_finalizer(self):
         # Some panels don't support the subscription for panel status
         # Since the panel creates history events for most faults
@@ -806,14 +853,15 @@ class Panel:
             0x06: (self._output_status_consumer, self._output_status_finalizer),
             0x07: (self._point_status_consumer, None),
             0x08: (self._door_status_consumer, None),
-            0x0a: (self._panel_status_consumer, None)
+            0x0A: (self._panel_status_consumer, None),
         }
         pos = 0
         while pos < len(data):
-            (update_type, n_updates) = data[pos:pos+2]
+            (update_type, n_updates) = data[pos : pos + 2]
             pos += 2
             self._last_msg = datetime.now()
             consumer, finalizer = CONSUMERS[update_type]
             for _ in range(0, n_updates):
                 pos += consumer(data[pos:])
-            if finalizer: finalizer()
+            if finalizer:
+                finalizer()

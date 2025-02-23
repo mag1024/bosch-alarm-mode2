@@ -640,5 +640,5 @@ SOLUTION_HISTORY_FORMAT = {
     "168": "Door {param1} Secure Cmd Fail, Out Window",
     "169": "Door {param1} Cycle Cmd Fail, Secured",
     "170": "Door {param1} Secure Cmd Fail, Wrong Level",
-    "171": "Door {param1} Cmd Fail, Wrong Response"
+    "171": "Door {param1} Cmd Fail, Wrong Response",
 }

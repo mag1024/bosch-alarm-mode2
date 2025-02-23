@@ -3,9 +3,12 @@ import logging
 from datetime import datetime
 from typing import NamedTuple
 from .history_const import (
-    B_G_HISTORY_FORMAT, AMAX_HISTORY_FORMAT,
-    SOLUTION_HISTORY_FORMAT, SOLUTION_USERS,
-    EVENT_LOOKBACK_COUNT)
+    B_G_HISTORY_FORMAT,
+    AMAX_HISTORY_FORMAT,
+    SOLUTION_HISTORY_FORMAT,
+    SOLUTION_USERS,
+    EVENT_LOOKBACK_COUNT,
+)
 from .utils import BE_INT, LE_INT
 
 LOG = logging.getLogger(__name__)
@@ -52,15 +55,15 @@ class History:
         self._events.append(HistoryEvent(id, datetime.now(), error_str))
 
     def parse_polled_events(self, event_data):
-        if not event_data: return
+        if not event_data:
+            return
         count = event_data[0]
         start = self._parser.parse_start_event_id(event_data) + 1
         event_data = event_data[5:]
         # Panels can have large numbers of history events, which take a very
         # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
         if count == 0:
-            return (max(0, start - EVENT_LOOKBACK_COUNT - 1)
-                    if len(self._events) == 0 else None)
+            return max(0, start - EVENT_LOOKBACK_COUNT - 1) if len(self._events) == 0 else None
 
         event_length = len(event_data) // count
         for i in range(start, start + count):
@@ -71,7 +74,6 @@ class History:
                 event_data = event_data[event_length:]
             except Exception as excp:
                 self._append_error(i, excp)
-
 
         if count > self._max_count:
             self._max_count = count
@@ -171,9 +173,14 @@ class SolutionHistoryParser(HistoryParser):
 
     def _parse_event(self, event: HistoryEventParams):
         user = SOLUTION_USERS.get(
-            event.param2, f"User {event.param2}" if event.param2 <= 32 else "")
-        return (event.date, SOLUTION_HISTORY_FORMAT[event.code].format(
-            user=user, param1=event.param1, param2=event.param2))
+            event.param2, f"User {event.param2}" if event.param2 <= 32 else ""
+        )
+        return (
+            event.date,
+            SOLUTION_HISTORY_FORMAT[event.code].format(
+                user=user, param1=event.param1, param2=event.param2
+            ),
+        )
 
     def _parse_subscription_event_timestamp(self, timestamp) -> datetime:
         return _parse_sol_amax_timestamp(timestamp)
@@ -189,7 +196,7 @@ class AmaxHistoryParser(HistoryParser):
     def parse_start_event_id(self, event_data):
         # AMAX panels use some bytes of the event id as flags
         # Apply a mask to only keep the actual event id
-        return (BE_INT.int32(event_data, 1) & 0x001FF)
+        return BE_INT.int32(event_data, 1) & 0x001FF
 
     def _parse_event(self, event: HistoryEventParams):
         # Amax requires different strings depending on param1 sometimes
@@ -202,11 +209,14 @@ class AmaxHistoryParser(HistoryParser):
             ("_dx3", lambda p: p in (150, 151)),
             ("_b4", lambda p: p in (150, 151)),
         ]
-        for (suffix, predicate) in key_specs:
+        for suffix, predicate in key_specs:
             if predicate and not predicate(event.param1):
                 continue
             if template := AMAX_HISTORY_FORMAT.get(event.code + suffix):
-                return (event.date, template.format(param1=event.param1, param2=event.param2))
+                return (
+                    event.date,
+                    template.format(param1=event.param1, param2=event.param2),
+                )
         return (event.date, f"Unknown event {event}")
 
 
@@ -236,5 +246,12 @@ class BGHistoryParser(HistoryParser):
         return datetime(year, month, day, hour, minute, second)
 
     def _parse_event(self, event: HistoryEventParams):
-        return (event.date, B_G_HISTORY_FORMAT[event.code].format(
-            area=event.area, param1=event.param1, param2=event.param2, param3=event.param3))
+        return (
+            event.date,
+            B_G_HISTORY_FORMAT[event.code].format(
+                area=event.area,
+                param1=event.param1,
+                param2=event.param2,
+                param3=event.param3,
+            ),
+        )
