@@ -1,12 +1,36 @@
-[tool.poetry]
+[project]
 name = "bosch-alarm-mode2"
 version = "0.4.1"
 description = "An async Python library for interacting with Bosch Alarm Panels supporting the 'Mode 2' API."
-authors = ["Michael Grigoriev <mag@luminal.org>"]
-
-[tool.poetry.dependencies]
-python = "^3.9"
+readme = "README.md"
+authors = [{ name = "Michael Grigoriev", email = "mag@luminal.org" }]
+requires-python = ">= 3.11"
+classifiers = [
+  'Development Status :: 5 - Production/Stable',
+  "Intended Audience :: Developers",
+  "Topic :: Home Automation",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.7",
+]
+
+[project.urls]
+Homepage = "https://github.com/mag1024/bosch-alarm-mode2"
+Repository = "https://github.com/mag1024/bosch-alarm-mode2.git"
+Issues = "https://github.com/mag1024/bosch-alarm-mode2/issues"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+ignore = ["F403", "F405", "E722"]

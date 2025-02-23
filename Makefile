@@ -1,15 +1,18 @@
-.PHONY: install clean
+.PHONY: install clean format check
 
 dist:
-	poetry build
+	uv build
 
 clean:
+	find . -name '.cache' -exec rm -rf {} +
+	find . -name '__pycache__' -exec rm -rf {} +
 	find . -name '*.pyc' -exec rm -f {} +
 	find . -name '*.pyo' -exec rm -f {} +
-	find . -name '__pycache__' -exec rm -rf {} +
-	find . -name '.cache' -exec rm -rf {} +
-	find . -name '.pytest_cache' -exec rm -rf {} +
+	find . -name '.ruff_cache' -exec rm -rf {} +
 	rm -rf build dist *.egg-info
 
-install:
-	poetry install
+format:
+	uv run ruff format
+
+check:
+	uv run ruff check --no-fix
