@@ -1,6 +1,6 @@
 [project]
 name = "bosch-alarm-mode2"
-version = "0.4.1"
+version = "0.4.2"
 description = "An async Python library for interacting with Bosch Alarm Panels supporting the 'Mode 2' API."
 readme = "README.md"
 authors = [{ name = "Michael Grigoriev", email = "mag@luminal.org" }]
