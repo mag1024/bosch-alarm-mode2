@@ -62,6 +62,7 @@ PANEL_MODEL = {
     0xA9: "B6512 (US1B)",
 }
 
+
 class AREA_STATUS:
     UNKNOWN = 0x00
     DISARMED = 0x04
@@ -89,16 +90,14 @@ class AREA_STATUS:
         0x0E: "Away Entry Delay",
     }
 
+
 class OUTPUT_STATUS:
     INACTIVE = 0x00
     ACTIVE = 0x01
     UNKNOWN = 0x02
 
-    TEXT = {
-        0x00: "Inactive",
-        0x01: "Active",
-        0x02: "Unknown"
-    }
+    TEXT = {0x00: "Inactive", 0x01: "Active", 0x02: "Unknown"}
+
 
 AREA_READY_NOT = 0x00
 AREA_READY_PART = 0x01
@@ -117,6 +116,7 @@ AREA_ARMING_STAY1 = 0x0A
 AREA_ARMING_STAY2 = 0x0B
 AREA_ARMING_AWAY = 0x0C
 
+
 class POINT_STATUS:
     OPEN = [0x01, 0x02]
     NORMAL = 0x03
@@ -130,8 +130,9 @@ class POINT_STATUS:
         0x04: "Missing",
         0x05: "Resistor 2",
         0x06: "Resistor 3",
-        0xFF: "Unknown"
+        0xFF: "Unknown",
     }
+
 
 class DOOR_STATUS:
     LOCKED = 0x00
@@ -157,8 +158,9 @@ class DOOR_STATUS:
         0x20: "Learn Mode",
         0x40: "Secured",
         0x80: "Unlocked",
-        0xFF: "Unknown"
+        0xFF: "Unknown",
     }
+
 
 class DOOR_ACTION:
     NO_ACTION = 0x00
@@ -167,6 +169,7 @@ class DOOR_ACTION:
     TERMINATE_UNLOCK = 0x03
     SECURE = 0x04
     TERMINATE_SECURE = 0x05
+
 
 ALARM_MEMORY_PRIORITY_ALARMS = [0x07, 0x09, 0x0A]
 
@@ -180,7 +183,7 @@ ALARM_MEMORY_PRIORITIES = {
     0x07: "Burglary Alarm",
     0x08: "Personal Emergency",
     0x09: "Gas Alarm",
-    0x0A: "Fire Alarm"
+    0x0A: "Fire Alarm",
 }
 
 ALARM_PANEL_FAULTS = {
@@ -195,11 +198,13 @@ ALARM_PANEL_FAULTS = {
     (1 << 10): "Fail to call RPS since RPS hang up",
     (1 << 13): "Point bus fail since RPS hang up",
     (1 << 14): "Log overflow",
-    (1 << 15): "Log threshold"
+    (1 << 15): "Log threshold",
 }
+
 
 class AUTHORITY_TYPE:
     GET_HISTORY = 0x2A
+
 
 class CMD:
     # Unauthenticated commands
@@ -240,6 +245,7 @@ class CMD:
     SET_DATE_TIME = 0x11
     REQUEST_DATE_TIME = 0x12
 
+
 # Some commands have a limit on how many entities can be requested at a time.
 CMD_REQUEST_MAX = {
     CMD.AREA_STATUS: 50,
@@ -248,9 +254,11 @@ CMD_REQUEST_MAX = {
     CMD.POINT_STATUS: 66,
 }
 
+
 class PROTOCOL:
     BASIC = 0x01
     EXTENDED = 0x04
+
 
 class USER_TYPE:
     INSTALLER_APP = 0x00
