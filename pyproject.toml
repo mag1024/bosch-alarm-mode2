@@ -15,6 +15,11 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mag1024/bosch-alarm-mode2"
+Repository = "https://github.com/mag1024/bosch-alarm-mode2.git"
+Issues = "https://github.com/mag1024/bosch-alarm-mode2/issues"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -23,11 +28,6 @@ build-backend = "hatchling.build"
 dev = [
     "ruff>=0.9.7",
 ]
-
-[project.urls]
-Homepage = "https://github.com/mag1024/bosch-alarm-mode2"
-Repository = "https://github.com/mag1024/bosch-alarm-mode2.git"
-Issues = "https://github.com/mag1024/bosch-alarm-mode2/issues"
 
 [tool.ruff]
 line-length = 100
