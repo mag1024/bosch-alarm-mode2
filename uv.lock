@@ -4,7 +4,6 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "bosch-alarm-mode2"
-version = "0.4.1"
 source = { editable = "." }
 
 [package.dev-dependencies]
