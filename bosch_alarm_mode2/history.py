@@ -22,6 +22,7 @@ class HistoryEvent(NamedTuple):
     def __repr__(self) -> str:
         return f"[{self.id}] {self.date} | {self.message}"
 
+
 class HistoryEventParams(NamedTuple):
     date: datetime
     code: str

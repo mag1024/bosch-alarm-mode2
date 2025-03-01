@@ -13,7 +13,9 @@ LOG = logging.getLogger(__name__)
 
 
 class Connection(asyncio.Protocol):
-    def __init__(self, on_status_update: Callable[[bytearray],None], on_disconnect: Callable[[],None]) -> None:
+    def __init__(
+        self, on_status_update: Callable[[bytearray], None], on_disconnect: Callable[[], None]
+    ) -> None:
         self.protocol = PROTOCOL.BASIC
         self._on_status_update = on_status_update
         self._on_disconnect = on_disconnect
@@ -26,7 +28,7 @@ class Connection(asyncio.Protocol):
     def set_max_commands_in_flight(self, command_count: int) -> None:
         self._command_semaphore = asyncio.Semaphore(command_count)
 
-    def connection_made(self, transport: asyncio.Transport) -> None: # type: ignore
+    def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore
         LOG.info("Connection established.")
         self._transport = transport
 
@@ -39,7 +41,7 @@ class Connection(asyncio.Protocol):
         self._buffer += data
         self._consume_buffer()
 
-    async def send_command(self, code: int, data: bytes=bytearray()) -> bytearray | None:
+    async def send_command(self, code: int, data: bytes = bytearray()) -> bytearray | None:
         if not self._transport:
             return None
         # Some panels don't like receiving multiple commands at once
