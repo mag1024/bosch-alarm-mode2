@@ -563,7 +563,7 @@ class Panel:
         self.faults_observer._notify()
 
     @property
-    def panel_faults(self) -> [str]:
+    def panel_faults(self) -> list[str]:
         return [fault for mask, fault in ALARM_PANEL_FAULTS.items() if self._faults_bitmap & mask]
 
     async def _load_faults(self):
@@ -638,7 +638,7 @@ class Panel:
             names[id] = name.decode("utf8")
         return names
 
-    async def _load_entity_set(self, cmd) -> [int]:
+    async def _load_entity_set(self, cmd) -> list[int]:
         data = await self._connection.send_command(cmd)
         ids = []
         index = 0

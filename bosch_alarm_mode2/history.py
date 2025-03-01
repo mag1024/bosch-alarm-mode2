@@ -25,7 +25,7 @@ class HistoryEvent(NamedTuple):
 
 class History:
     def __init__(self) -> None:
-        self._events = []
+        self._events: list[HistoryEvent] = []
         self._parser = None
         self._max_count = 0
         self.has_errored = False
@@ -96,7 +96,7 @@ class History:
             return len(raw_event)
 
 
-def _sequential_params(data) -> (int, int, int):
+def _sequential_params(data) -> tuple[int, int, int]:
     return (BE_INT.int16(data, 0), BE_INT.int16(data, 2), BE_INT.int16(data, 4))
 
 
@@ -136,7 +136,7 @@ class HistoryParser:
         pass
 
     @abc.abstractmethod
-    def _parse_event(self, event: HistoryEventParams) -> (datetime, str):
+    def _parse_event(self, event: HistoryEventParams) -> tuple[datetime, str]:
         pass
 
 
