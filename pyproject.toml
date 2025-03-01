@@ -29,8 +29,12 @@ dev = [
     "ruff>=0.9.7",
 ]
 
+[tool.uv]
+trusted-publishing = "always"
+
 [tool.hatch.version]
 source = "vcs"
+raw-options = { local_scheme = "no-local-version" }
 
 [tool.ruff]
 line-length = 100
