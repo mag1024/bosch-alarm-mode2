@@ -28,7 +28,7 @@ def _supported_format(value: int, masks: list[tuple[int, int]]) -> int:
 
 class PanelEntity:
     def __init__(self, name: str | None, status: int) -> None:
-        self.name = name
+        self.name = str(name)
         self.status_observer = Observable()
         self.status = status
 
