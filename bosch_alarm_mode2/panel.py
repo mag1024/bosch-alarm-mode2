@@ -77,7 +77,7 @@ class Area(PanelEntity):
         self.alarm_observer._notify()
 
     def is_disarmed(self):
-        return self.status == AREA_STATUS.DISARMED
+        return self.status is AREA_STATUS.DISARMED
 
     def is_arming(self):
         return self.status in AREA_STATUS.ARMING
@@ -121,7 +121,7 @@ class Point(PanelEntity):
         return self.status in POINT_STATUS.OPEN
 
     def is_normal(self) -> bool:
-        return self.status == POINT_STATUS.NORMAL
+        return self.status is POINT_STATUS.NORMAL
 
     def reset(self):
         self.status = POINT_STATUS.UNKNOWN
@@ -138,7 +138,7 @@ class Door(PanelEntity):
         return self.status in DOOR_STATUS.OPEN
 
     def is_locked(self) -> bool:
-        return self.status == DOOR_STATUS.LOCKED
+        return self.status is DOOR_STATUS.LOCKED
 
     def reset(self):
         self.status = DOOR_STATUS.UNKNOWN
@@ -152,7 +152,7 @@ class Output(PanelEntity):
         PanelEntity.__init__(self, name, status)
 
     def is_active(self) -> bool:
-        return self.status == OUTPUT_STATUS.ACTIVE
+        return self.status is OUTPUT_STATUS.ACTIVE
 
     def reset(self):
         self.status = OUTPUT_STATUS.UNKNOWN
