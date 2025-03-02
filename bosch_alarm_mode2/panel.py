@@ -771,8 +771,7 @@ class Panel:
         request = bytearray([arm_type])
         # bitmask with only i-th bit from the left being 1 (section 3.1.4)
         request.extend(bytearray((area_id - 1) // 8))  # leading 0 bytes
-        # i%8-th bit from the left (top) set
-        request.append(1 << (7 - ((area_id - 1) % 8)))
+        request.append(1 << (7 - ((area_id - 1) % 8)))  # i%8-th bit from the left (top) set
         await self._send_command(CMD.AREA_ARM, request)
 
     async def _subscribe(self) -> None:
