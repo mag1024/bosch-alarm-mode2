@@ -198,7 +198,7 @@ class Panel:
         self._last_msg: datetime | None = None
         self._poll_task: asyncio.Task[None] | None = None
 
-        self.model: str | None = None
+        self.model: str
         self.protocol_version: str | None = None
         self.firmware_version: str | None = None
         self.serial_number: int | None = None
@@ -474,8 +474,6 @@ class Panel:
         raise PermissionError("Authentication failed: " + error)
 
     async def _authenticate(self) -> None:
-        if not self.model:
-            return
         user_type = USER_TYPE.AUTOMATION
         if "Solution" in self.model:
             if not self._installer_or_user_code:
