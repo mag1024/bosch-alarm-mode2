@@ -198,7 +198,8 @@ class Panel:
         self._last_msg: datetime | None = None
         self._poll_task: asyncio.Task[None] | None = None
 
-        self.model: str
+        # Model is always set by basicinfo
+        self.model: str = None # type: ignore[assignment]
         self.protocol_version: str | None = None
         self.firmware_version: str | None = None
         self.serial_number: int | None = None
