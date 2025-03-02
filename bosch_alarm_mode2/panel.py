@@ -352,7 +352,7 @@ class Panel:
 
     async def _send_command(self, code: int, data: bytes = bytearray()) -> bytearray:
         if not self._connection:
-            raise asyncio.InvalidStateError()
+            raise asyncio.InvalidStateError("Not connected")
         return await self._connection.send_command(code, data)
 
     def _on_disconnect(self) -> None:

@@ -43,7 +43,7 @@ class Connection(asyncio.Protocol):
 
     async def send_command(self, code: int, data: bytes = bytearray()) -> bytearray:
         if not self._transport:
-            raise asyncio.InvalidStateError()
+            raise asyncio.InvalidStateError("Transport not connected")
         # Some panels don't like receiving multiple commands at once
         # so we limit the amount of commands that are in flight at a given time
         async with self._command_semaphore:
