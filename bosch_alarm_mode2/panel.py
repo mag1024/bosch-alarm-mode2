@@ -198,7 +198,7 @@ class Panel:
         self._last_msg: datetime | None = None
         self._poll_task: asyncio.Task[None] | None = None
 
-        # Model is always set by basicinfo
+        # Model is always set by basicinfog
         self.model: str = None # type: ignore[assignment]
         self.protocol_version: str | None = None
         self.firmware_version: str | None = None
@@ -574,14 +574,12 @@ class Panel:
     async def _extended_info(self) -> None:
         if self._supports_serial:  # supports serial read
             data = await self._send_command(CMD.PRODUCT_SERIAL, b"\x00\x00")
-            if data:
-                self.serial_number = int.from_bytes(data[0:6], "big")
+            self.serial_number = int.from_bytes(data[0:6], "big")
         if self._supports_status:
             data = await self._send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
-            if data:
-                version = data[0]
-                revision = int.from_bytes(data[1:2], "big")
-                self.firmware_version = "v%d.%d" % (version, revision)
+            version = data[0]
+            revision = int.from_bytes(data[1:2], "big")
+            self.firmware_version = "v%d.%d" % (version, revision)
 
     def _set_panel_faults(self, faults: int) -> None:
         self._faults_bitmap = faults
@@ -594,8 +592,7 @@ class Panel:
     async def _load_faults(self) -> None:
         if self._supports_status:
             data = await self._send_command(CMD.REQUEST_PANEL_SYSTEM_STATUS)
-            if data:
-                self._set_panel_faults(BE_INT.int16(data, 5))
+            self._set_panel_faults(BE_INT.int16(data, 5))
 
     async def _load_outputs(self) -> None:
         names = await self._load_names(
