@@ -6,7 +6,7 @@ from datetime import datetime
 
 from collections import deque
 
-from .const import CMD, ERROR, PROTOCOL
+from .const import ERROR, PROTOCOL
 from .utils import BE_INT
 
 LOG = logging.getLogger(__name__)
