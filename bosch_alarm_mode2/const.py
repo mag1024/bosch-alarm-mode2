@@ -98,6 +98,7 @@ class OUTPUT_STATUS:
 
     TEXT = {0x00: "Inactive", 0x01: "Active", 0x02: "Unknown"}
 
+
 class AREA_READY_STATUS:
     AREA_READY_NOT = 0x00
     AREA_READY_PART = 0x01
@@ -108,6 +109,7 @@ class AREA_READY_STATUS:
         0x01: "Part Ready",
         0x02: "All Ready",
     }
+
 
 class AREA_ARMING_STATUS:
     AREA_ARMING_DISARM = 0x01
