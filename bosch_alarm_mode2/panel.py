@@ -62,16 +62,16 @@ class Area(PanelEntity):
         PanelEntity.__init__(self, name, status)
         self.ready_observer = Observable()
         self.alarm_observer = Observable()
-        self._set_ready(AREA_READY_STATUS.AREA_READY_NOT, 0)
+        self._set_ready(AREA_READY_STATUS.NOT, 0)
         self._alarms: set[int] = set()
 
     @property
     def all_ready(self) -> bool:
-        return self._ready == AREA_READY_STATUS.AREA_READY_ALL
+        return self._ready == AREA_READY_STATUS.ALL
 
     @property
     def part_ready(self) -> bool:
-        return self._ready == AREA_READY_STATUS.AREA_READY_PART
+        return self._ready == AREA_READY_STATUS.PART
 
     @property
     def faults(self) -> int:
@@ -118,7 +118,7 @@ class Area(PanelEntity):
 
     def reset(self) -> None:
         self.status = AREA_STATUS.UNKNOWN
-        self._set_ready(AREA_READY_STATUS.AREA_READY_NOT, 0)
+        self._set_ready(AREA_READY_STATUS.NOT, 0)
         self._alarms = set()
 
     def __repr__(self) -> str:
@@ -211,8 +211,8 @@ class Panel:
         self.outputs: dict[int, Output] = {}
         self.doors: dict[int, Door] = {}
 
-        self._partial_arming_id = AREA_ARMING_STATUS.AREA_ARMING_PERIMETER_DELAY
-        self._all_arming_id = AREA_ARMING_STATUS.AREA_ARMING_MASTER_DELAY
+        self._partial_arming_id = AREA_ARMING_STATUS.PERIMETER_DELAY
+        self._all_arming_id = AREA_ARMING_STATUS.MASTER_DELAY
         self._supports_serial = False
         self._supports_door = False
         self._set_subscription_supported_format = 0
@@ -266,7 +266,7 @@ class Panel:
             self._connection.close()
 
     async def area_disarm(self, area_id: int) -> None:
-        await self._area_arm(area_id, AREA_ARMING_STATUS.AREA_ARMING_DISARM)
+        await self._area_arm(area_id, AREA_ARMING_STATUS.DISARM)
 
     async def area_arm_part(self, area_id: int) -> None:
         await self._area_arm(area_id, self._partial_arming_id)
@@ -461,10 +461,8 @@ class Panel:
             raise PermissionError("Authentication failed, please check your passcode.")
 
     async def _authenticate_automation_user(self, user_type: int) -> None:
-        if not self._automation_code:
-            return
         creds = bytearray([user_type])  # automation user
-        creds.extend(map(ord, self._automation_code))
+        creds.extend(map(ord, self._automation_code)) # type: ignore[arg-type]
         creds.append(0x00)  # null terminate
         result = await self._send_command(CMD.AUTHENTICATE, creds)
         if result and result[0] == 0x01:
@@ -523,11 +521,11 @@ class Panel:
 
         # Solution and AMAX panels use different arming types from B/G series panels.
         if data[0] <= 0x28:
-            self._partial_arming_id = AREA_ARMING_STATUS.AREA_ARMING_STAY1
-            self._all_arming_id = AREA_ARMING_STATUS.AREA_ARMING_AWAY
+            self._partial_arming_id = AREA_ARMING_STATUS.STAY1
+            self._all_arming_id = AREA_ARMING_STATUS.AWAY
         else:
-            self._partial_arming_id = AREA_ARMING_STATUS.AREA_ARMING_PERIMETER_DELAY
-            self._all_arming_id = AREA_ARMING_STATUS.AREA_ARMING_MASTER_DELAY
+            self._partial_arming_id = AREA_ARMING_STATUS.PERIMETER_DELAY
+            self._all_arming_id = AREA_ARMING_STATUS.MASTER_DELAY
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b"\0")
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
