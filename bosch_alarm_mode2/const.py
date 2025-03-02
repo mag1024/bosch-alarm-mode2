@@ -99,22 +99,25 @@ class OUTPUT_STATUS:
     TEXT = {0x00: "Inactive", 0x01: "Active", 0x02: "Unknown"}
 
 
-AREA_READY_NOT = 0x00
-AREA_READY_PART = 0x01
-AREA_READY_ALL = 0x02
+class AREA_READY_STATUS:
+    NOT = 0x00
+    PART = 0x01
+    ALL = 0x02
 
-AREA_READY = {
-    0x00: "Not Ready",
-    0x01: "Part Ready",
-    0x02: "All Ready",
-}
+    TEXT = {
+        0x00: "Not Ready",
+        0x01: "Part Ready",
+        0x02: "All Ready",
+    }
 
-AREA_ARMING_DISARM = 0x01
-AREA_ARMING_MASTER_DELAY = 0x03
-AREA_ARMING_PERIMETER_DELAY = 0x05
-AREA_ARMING_STAY1 = 0x0A
-AREA_ARMING_STAY2 = 0x0B
-AREA_ARMING_AWAY = 0x0C
+
+class AREA_ARMING_STATUS:
+    DISARM = 0x01
+    MASTER_DELAY = 0x03
+    PERIMETER_DELAY = 0x05
+    STAY1 = 0x0A
+    STAY2 = 0x0B
+    AWAY = 0x0C
 
 
 class POINT_STATUS:

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 import logging
 import binascii
 from datetime import datetime
@@ -12,34 +13,37 @@ LOG = logging.getLogger(__name__)
 
 
 class Connection(asyncio.Protocol):
-    def __init__(self, passcode, on_status_update, on_disconnect):
+    def __init__(
+        self, on_status_update: Callable[[bytearray], None], on_disconnect: Callable[[], None]
+    ) -> None:
         self.protocol = PROTOCOL.BASIC
-        self._passcode = passcode
         self._on_status_update = on_status_update
         self._on_disconnect = on_disconnect
-        self._transport = None
+        self._transport: asyncio.Transport | None = None
         self._buffer = bytearray()
-        self._pending = deque()
+        self._pending: deque[asyncio.Future[bytearray]] = deque()
         self._pending_last_empty = datetime.now()
         self.set_max_commands_in_flight(1)
 
-    def set_max_commands_in_flight(self, command_count):
+    def set_max_commands_in_flight(self, command_count: int) -> None:
         self._command_semaphore = asyncio.Semaphore(command_count)
 
-    def connection_made(self, transport):
+    def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore
         LOG.info("Connection established.")
         self._transport = transport
 
-    def connection_lost(self, exc):
+    def connection_lost(self, exc: Exception | None) -> None:
         LOG.info("Connection terminated.")
         self._on_disconnect()
 
-    def data_received(self, data):
+    def data_received(self, data: bytes) -> None:
         LOG.debug("<< %s", binascii.hexlify(data))
         self._buffer += data
         self._consume_buffer()
 
-    async def send_command(self, code, data=bytearray()) -> bytearray:
+    async def send_command(self, code: int, data: bytes = bytearray()) -> bytearray:
+        if not self._transport:
+            raise asyncio.InvalidStateError("Transport not connected")
         # Some panels don't like receiving multiple commands at once
         # so we limit the amount of commands that are in flight at a given time
         async with self._command_semaphore:
@@ -49,12 +53,12 @@ class Connection(asyncio.Protocol):
             request.append(code)
             request.extend(data)
             LOG.debug(">> %s", binascii.hexlify(request))
-            response = asyncio.get_running_loop().create_future()
+            response: asyncio.Future[bytearray] = asyncio.get_running_loop().create_future()
             self._pending.append(response)
             self._transport.write(request)
             return await response
 
-    def close(self):
+    def close(self) -> None:
         if self._transport:
             self._transport.abort()
             self._transport = None
@@ -63,7 +67,7 @@ class Connection(asyncio.Protocol):
     def pending_last_empty(self) -> datetime:
         return self._pending_last_empty if len(self._pending) else datetime.now()
 
-    def _consume_buffer(self):
+    def _consume_buffer(self) -> None:
         while self._buffer:
             msg_len = 0
             if self._buffer[0] == 0x01:
@@ -85,12 +89,12 @@ class Connection(asyncio.Protocol):
                 raise RuntimeError("unknown protocol " + str(self._buffer))
             self._buffer = self._buffer[msg_len:]
 
-    def _process_response(self, data):
+    def _process_response(self, data: bytearray) -> None:
         response = self._pending.popleft()
         if len(self._pending) == 0:
             self._pending_last_empty = datetime.now()
         if data[0] == 0xFC:
-            response.set_result(None)
+            response.set_result(bytearray())
         elif data[0] == 0xFD:
             response.set_exception(Exception("NACK: ", ERROR[data[1]]))
         elif data[0] == 0xFE:
