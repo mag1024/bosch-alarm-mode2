@@ -21,7 +21,7 @@ class Connection(asyncio.Protocol):
         self._on_disconnect = on_disconnect
         self._transport: asyncio.Transport | None = None
         self._buffer = bytearray()
-        self._pending: deque[asyncio.Future[bytearray | None]] = deque()
+        self._pending: deque[asyncio.Future[bytearray]] = deque()
         self._pending_last_empty = datetime.now()
         self.set_max_commands_in_flight(1)
 
@@ -41,7 +41,7 @@ class Connection(asyncio.Protocol):
         self._buffer += data
         self._consume_buffer()
 
-    async def send_command(self, code: int, data: bytes = bytearray()) -> bytearray | None:
+    async def send_command(self, code: int, data: bytes = bytearray()) -> bytearray:
         if not self._transport:
             raise asyncio.InvalidStateError()
         # Some panels don't like receiving multiple commands at once
@@ -53,7 +53,7 @@ class Connection(asyncio.Protocol):
             request.append(code)
             request.extend(data)
             LOG.debug(">> %s", binascii.hexlify(request))
-            response: asyncio.Future[bytearray | None] = asyncio.get_running_loop().create_future()
+            response: asyncio.Future[bytearray] = asyncio.get_running_loop().create_future()
             self._pending.append(response)
             self._transport.write(request)
             return await response
@@ -94,7 +94,7 @@ class Connection(asyncio.Protocol):
         if len(self._pending) == 0:
             self._pending_last_empty = datetime.now()
         if data[0] == 0xFC:
-            response.set_result(None)
+            response.set_result(bytearray())
         elif data[0] == 0xFD:
             response.set_exception(Exception("NACK: ", ERROR[data[1]]))
         elif data[0] == 0xFE:
