@@ -157,7 +157,7 @@ class Door(PanelEntity):
     def is_cycling(self) -> bool:
         return self.status == DOOR_STATUS.CYCLING
 
-    def is_secure(self) -> bool:
+    def is_secured(self) -> bool:
         return self.status == DOOR_STATUS.SECURED
 
     def is_locked(self) -> bool:
