@@ -16,6 +16,7 @@ LOG = logging.getLogger(__name__)
 
 class HistoryEvent(NamedTuple):
     id: int
+    raw_id: int
     date: datetime
     message: str
 
@@ -42,10 +43,10 @@ class HistoryParser:
         timestamp = BE_INT.int32(raw_event, 14)
         date = self._parse_subscription_event_timestamp(timestamp)
         params = HistoryEventParams._make((date, event_code, area, *param123))
-        return HistoryEvent(BE_INT.int32(raw_event) + 1, *self._parse_event(params))
+        return HistoryEvent(BE_INT.int32(raw_event) + 1, BE_INT.int32(raw_event) + 1, *self._parse_event(params))
 
-    def parse_polled_event(self, id: int, event_data: bytearray) -> HistoryEvent:
-        return HistoryEvent(id, *self._parse_event(self._parse_event_params(event_data)))
+    def parse_polled_event(self, id: int, raw_id: int, event_data: bytearray) -> HistoryEvent:
+        return HistoryEvent(id, raw_id, *self._parse_event(self._parse_event_params(event_data)))
 
     def parse_start_event_id(self, event_data: bytearray) -> int:
         return BE_INT.int32(event_data, 1)
@@ -185,6 +186,7 @@ class History:
         self._events: list[HistoryEvent] = []
         self._parser: HistoryParser | None = None
         self._max_count = 0
+        self._max_event_id = 0xFFFFFFFF
         self.has_errored = False
 
     @property
@@ -196,36 +198,38 @@ class History:
         # Requesting a very large starting event id causes the panel to reply
         # with the event number of the next event to be written to the history,
         # allowing us to discover the max existing event id.
-        return self._events[-1][0] if self._events else 0xFFFFFFFF
+        return self._events[-1].raw_id if self._events else self._max_event_id
 
     def init_for_panel(self, panel_type: int) -> None:
         if panel_type <= 0x21 or panel_type == 0x28:
             self._parser = SolutionHistoryParser()
         elif panel_type <= 0x24:
             self._parser = AmaxHistoryParser()
+            self._max_event_id = 0x01FFFFFF
         else:
             self._parser = BGHistoryParser()
 
-    def _append_error(self, id: int, excp: Exception) -> None:
+    def _append_error(self, id: int, raw_id: int, excp: Exception) -> None:
         error_str = f"parse error: {repr(excp)}"
         LOG.error("History event " + error_str)
-        self._events.append(HistoryEvent(id, datetime.now(), error_str))
+        self._events.append(HistoryEvent(id, raw_id, datetime.now(), error_str))
 
     def parse_polled_events(self, event_data: bytearray | None) -> int | None:
         if not event_data or not self._parser:
             return None
         count = event_data[0]
         start = self._parser.parse_start_event_id(event_data) + 1
+        raw_start = BE_INT.int32(event_data, 1) + 1
         event_data = event_data[5:]
         # Panels can have large numbers of history events, which take a very
         # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
         if count == 0:
-            return max(0, start - EVENT_LOOKBACK_COUNT - 1) if len(self._events) == 0 else None
+            return max(0, raw_start - EVENT_LOOKBACK_COUNT - 1) if len(self._events) == 0 else None
 
         event_length = len(event_data) // count
-        for i in range(start, start + count):
+        for i in range(0, count):
             try:
-                e = self._parser.parse_polled_event(i, event_data)
+                e = self._parser.parse_polled_event(start + i, raw_start + i, event_data)
                 LOG.debug(e)
                 self._events.append(e)
                 event_data = event_data[event_length:]
