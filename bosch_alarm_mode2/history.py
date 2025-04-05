@@ -216,6 +216,9 @@ class History:
             return None
         count = event_data[0]
         start = self._parser.parse_start_event_id(event_data) + 1
+        # Some panels wrap around when you go past the last event id
+        if start < self.last_event_id and self.last_event_id != 0xFFFFFFFF:
+            return None
         event_data = event_data[5:]
         # Panels can have large numbers of history events, which take a very
         # long time load. Limit to EVENT_LOOKBACK_COUNT most recent events.
