@@ -333,7 +333,7 @@ class Panel:
             print(*self.events, sep="\n")
 
     async def _connect(self, load_selector: int) -> None:
-        LOG.info("Connecting to %s:%d...", self._host, self._port)
+        LOG.debug("Connecting to %s:%d...", self._host, self._port)
 
         def connection_factory() -> Connection:
             return Connection(
