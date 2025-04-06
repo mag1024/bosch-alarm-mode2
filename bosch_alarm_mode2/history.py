@@ -226,6 +226,8 @@ class History:
         for i in range(start, start + count):
             try:
                 e = self._parser.parse_polled_event(i, event_data)
+                if self._events and e.date < self._events[-1].date:
+                    return None
                 LOG.debug(e)
                 self._events.append(e)
                 event_data = event_data[event_length:]
