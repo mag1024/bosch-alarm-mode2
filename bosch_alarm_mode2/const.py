@@ -173,36 +173,62 @@ class DOOR_ACTION:
     SECURE = 0x04
     TERMINATE_SECURE = 0x05
 
+class ALARM_MEMORY_PRIORITIES:
+    BURGLARY_TROUBLE = 0x01
+    BURGLARY_SUPERVISORY = 0x02
+    GAS_TROUBLE = 0x03
+    GAS_SUPERVISORY = 0x04
+    FIRE_TROUBLE = 0x05
+    FIRE_SUPERVISORY = 0x06
+    BURGLARY_ALARM = 0x07
+    PERSONAL_EMERGENCY = 0x08
+    GAS_ALARM = 0x09
+    FIRE_ALARM = 0x0A
 
-ALARM_MEMORY_PRIORITY_ALARMS = [0x07, 0x09, 0x0A]
+    PRIORITY = [0x07, 0x09, 0x0A]
+    
+    TEXT = {
+        BURGLARY_TROUBLE: "Burglary Trouble",
+        BURGLARY_SUPERVISORY: "Burglary Supervisory",
+        GAS_TROUBLE: "Gas Trouble",
+        GAS_SUPERVISORY: "Gas Supervisory",
+        FIRE_TROUBLE: "Fire Trouble",
+        FIRE_SUPERVISORY: "Fire Supervisory",
+        BURGLARY_ALARM: "Burglary Alarm",
+        PERSONAL_EMERGENCY: "Personal Emergency",
+        GAS_ALARM: "Gas Alarm",
+        FIRE_ALARM: "Fire Alarm",
+    }
 
-ALARM_MEMORY_PRIORITIES = {
-    0x01: "Burglary Trouble",
-    0x02: "Burglary Supervisory",
-    0x03: "Gas Trouble",
-    0x04: "Gas Supervisory",
-    0x05: "Fire Trouble",
-    0x06: "Fire Supervisory",
-    0x07: "Burglary Alarm",
-    0x08: "Personal Emergency",
-    0x09: "Gas Alarm",
-    0x0A: "Fire Alarm",
-}
 
-ALARM_PANEL_FAULTS = {
-    (1 << 1): "Phone line failure",
-    (1 << 2): "Parameter CRC fail in PIF",
-    (1 << 3): "Battery low",
-    (1 << 4): "Battery missing",
-    (1 << 5): "AC fail",
-    (1 << 7): "Communication fail since RPS hang up",
-    (1 << 8): "SDI fail since RPS hang up",
-    (1 << 9): "User code tamper since RPS hang up",
-    (1 << 10): "Fail to call RPS since RPS hang up",
-    (1 << 13): "Point bus fail since RPS hang up",
-    (1 << 14): "Log overflow",
-    (1 << 15): "Log threshold",
-}
+class ALARM_PANEL_FAULTS:
+    PHONE_LINE_FAILURE = (1 << 1)
+    PARAMETER_CRC_FAIL_IN_PIF = (1 << 2)
+    BATTERY_LOW = (1 << 3)
+    BATTERY_MISING = (1 << 4)
+    AC_FAIL = (1 << 5)
+    COMMUNICATION_FAIL_SINCE_RPS_HANG_UP = (1 << 7)
+    SDI_FAIL_SINCE_RPS_HANG_UP = (1 << 8)
+    USER_CODE_TAMPER_SINCE_RPS_HANG_UP = (1 << 9)
+    FAIL_TO_CALL_RPS_SINCE_RPS_HANG_UP = (1 << 10)
+    POINT_BUS_FAIL_SINCE_RPS_HANG_UP = (1 << 13)
+    LOG_OVERFLOW = (1 << 14)
+    LOG_THRESHOLD = (1 << 15)
+
+    TEXT = {
+        PHONE_LINE_FAILURE: "Phone line failure",
+        PARAMETER_CRC_FAIL_IN_PIF: "Parameter CRC fail in PIF",
+        BATTERY_LOW: "Battery low",
+        BATTERY_MISING: "Battery missing",
+        AC_FAIL: "AC fail",
+        COMMUNICATION_FAIL_SINCE_RPS_HANG_UP: "Communication fail since RPS hang up",
+        SDI_FAIL_SINCE_RPS_HANG_UP: "SDI fail since RPS hang up",
+        USER_CODE_TAMPER_SINCE_RPS_HANG_UP: "User code tamper since RPS hang up",
+        FAIL_TO_CALL_RPS_SINCE_RPS_HANG_UP: "Fail to call RPS since RPS hang up",
+        POINT_BUS_FAIL_SINCE_RPS_HANG_UP: "Point bus fail since RPS hang up",
+        LOG_OVERFLOW: "Log overflow",
+        LOG_THRESHOLD: "Log threshold",
+    }
 
 
 class AUTHORITY_TYPE:

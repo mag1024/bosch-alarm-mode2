@@ -8,7 +8,6 @@ from typing import Any, Generator
 
 from .const import (
     ALARM_MEMORY_PRIORITIES,
-    ALARM_MEMORY_PRIORITY_ALARMS,
     ALARM_PANEL_FAULTS,
     AREA_ARMING_STATUS,
     AREA_READY_STATUS,
@@ -79,7 +78,11 @@ class Area(PanelEntity):
 
     @property
     def alarms(self) -> list[str]:
-        return [ALARM_MEMORY_PRIORITIES[x] for x in self._alarms]
+        return [ALARM_MEMORY_PRIORITIES.TEXT[x] for x in self._alarms]
+
+    @property
+    def alarms_ids(self) -> set[int]:
+        return self._alarms
 
     def _set_ready(self, ready: int, faults: int) -> None:
         self._ready = ready
@@ -113,7 +116,7 @@ class Area(PanelEntity):
 
     def is_triggered(self) -> bool:
         return (self.is_armed() or self.is_pending()) and bool(
-            self._alarms.intersection(ALARM_MEMORY_PRIORITY_ALARMS)
+            self._alarms.intersection(ALARM_MEMORY_PRIORITIES.PRIORITY)
         )
 
     def reset(self) -> None:
@@ -591,7 +594,11 @@ class Panel:
 
     @property
     def panel_faults(self) -> list[str]:
-        return [fault for mask, fault in ALARM_PANEL_FAULTS.items() if self._faults_bitmap & mask]
+        return [fault for mask, fault in ALARM_PANEL_FAULTS.TEXT.items() if self._faults_bitmap & mask]
+
+    @property
+    def panel_faults_ids(self) -> list[int]:
+        return [mask for mask in ALARM_PANEL_FAULTS.TEXT if self._faults_bitmap & mask]
 
     async def _load_faults(self) -> None:
         if self._supports_status:
@@ -723,7 +730,7 @@ class Panel:
 
         format = bytearray([0x02] if self._alarm_summary_supported_format == 2 else [])
         data = await self._send_command(CMD.ALARM_MEMORY_SUMMARY, format)
-        for priority in ALARM_MEMORY_PRIORITIES.keys():
+        for priority in ALARM_MEMORY_PRIORITIES.TEXT.keys():
             i = (priority - 1) * 2
             count = BE_INT.int16(data, i)
             if count:
