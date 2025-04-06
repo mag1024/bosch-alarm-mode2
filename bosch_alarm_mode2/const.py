@@ -185,7 +185,7 @@ class ALARM_MEMORY_PRIORITIES:
     GAS_ALARM = 0x09
     FIRE_ALARM = 0x0A
 
-    PRIORITY = [0x07, 0x09, 0x0A]
+    PRIORITY_ALARMS = [0x07, 0x09, 0x0A]
     
     TEXT = {
         BURGLARY_TROUBLE: "Burglary Trouble",
