@@ -81,8 +81,8 @@ class Area(PanelEntity):
         return [ALARM_MEMORY_PRIORITIES.TEXT[x] for x in self._alarms]
 
     @property
-    def alarms_ids(self) -> set[int]:
-        return self._alarms
+    def alarms_ids(self) -> list[int]:
+        return list(self._alarms)
 
     def _set_ready(self, ready: int, faults: int) -> None:
         self._ready = ready
