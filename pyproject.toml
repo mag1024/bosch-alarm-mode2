@@ -1,5 +1,6 @@
 [project]
 name = "bosch-alarm-mode2"
+license = "MIT"
 description = "An async Python library for interacting with Bosch Alarm Panels supporting the 'Mode 2' API."
 readme = "README.md"
 authors = [{ name = "Michael Grigoriev", email = "mag@luminal.org" }]
@@ -8,7 +9,6 @@ classifiers = [
   'Development Status :: 5 - Production/Stable',
   "Intended Audience :: Developers",
   "Topic :: Home Automation",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -21,7 +21,7 @@ Repository = "https://github.com/mag1024/bosch-alarm-mode2.git"
 Issues = "https://github.com/mag1024/bosch-alarm-mode2/issues"
 
 [build-system]
-requires = ["hatchling",  "hatch-vcs"]
+requires = ["hatchling>=1.27.0",  "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
