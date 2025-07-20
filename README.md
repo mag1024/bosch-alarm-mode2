@@ -16,4 +16,4 @@ In practice, this library has only been tested with B8512G and the B5512 and the
 - For AMAX panels, use both your automation code and your user code for authentication. 
 
 Full documentation of the API can be requested from
-integrated.solutions@us.bosch.com.
+integrated.solutions@keenfinity-group.com.
