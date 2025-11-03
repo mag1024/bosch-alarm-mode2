@@ -543,6 +543,7 @@ class Panel:
             self._all_arming_id = AREA_ARMING_STATUS.AWAY
         else:
             self._partial_arming_id = AREA_ARMING_STATUS.PERIMETER_DELAY
+            self._partial_arming_instant_id = AREA_ARMING_STATUS.PERIMETER_INSTANT 
             self._all_arming_id = AREA_ARMING_STATUS.MASTER_DELAY
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b"\0")
