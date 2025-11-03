@@ -221,6 +221,7 @@ class Panel:
         self.doors: dict[int, Door] = {}
 
         self._partial_arming_id = AREA_ARMING_STATUS.PERIMETER_DELAY
+        self._partial_arming_instant_id = None
         self._all_arming_id = AREA_ARMING_STATUS.MASTER_DELAY
         self._supports_serial = False
         self._supports_door = False
@@ -279,6 +280,14 @@ class Panel:
 
     async def area_arm_part(self, area_id: int) -> None:
         await self._area_arm(area_id, self._partial_arming_id)
+
+    async def area_arm_part_instant(self, area_id: int) -> None:
+        if self._partial_arming_instant_id is None:
+            raise NotImplementedError("Panel does not support partial instant arming")
+        await self._area_arm(area_id, self._partial_arming_instant_id)
+
+    def is_arm_part_instant_supported(self) -> bool:
+        return self._partial_arming_instant_id is not None
 
     async def area_arm_all(self, area_id: int) -> None:
         await self._area_arm(area_id, self._all_arming_id)
