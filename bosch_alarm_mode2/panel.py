@@ -278,22 +278,10 @@ class Panel:
         await self._area_arm(area_id, AREA_ARMING_STATUS.DISARM)
 
     async def area_arm_part(self, area_id: int, delay: bool = True) -> None:
-        part_delay_id, part_instant_id = self._partial_arming_id
-
-        part_arming_id = part_delay_id
-        if not delay and part_instant_id is not None:
-            part_arming_id = part_instant_id
-        
-        await self._area_arm(area_id, part_arming_id)
+        await self._area_arm(area_id, self._get_arming_id(delay, *self._partial_arming_id))
 
     async def area_arm_all(self, area_id: int, delay: bool = True) -> None:
-        all_delay_id, all_instant_id = self._partial_arming_id
-
-        all_arming_id = all_delay_id
-        if not delay and all_instant_id is not None:
-            all_arming_id = all_instant_id
-        
-        await self._area_arm(area_id, all_arming_id)
+        await self._area_arm(area_id, self._get_arming_id(delay, *self._all_arming_id))
 
     async def set_output_active(self, output_id: int) -> None:
         await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
@@ -544,9 +532,7 @@ class Panel:
         if data[0] <= 0x28:
             self._partial_arming_id = (AREA_ARMING_STATUS.STAY1, None)
             self._all_arming_id = (AREA_ARMING_STATUS.AWAY, None)
-        else:
-            self._partial_arming_id = (AREA_ARMING_STATUS.PERIMETER_DELAY, AREA_ARMING_STATUS.PERIMETER_INSTANT)
-            self._all_arming_id = (AREA_ARMING_STATUS.MASTER_DELAY, AREA_ARMING_STATUS.MASTER_INSTANT)
+        
         # Section 13.2 of the protocol spec.
         bitmask = data[23:].ljust(33, b"\0")
         # As detailed in https://github.com/mag1024/bosch-alarm-mode2/pull/20
@@ -919,3 +905,7 @@ class Panel:
                 pos += consumer(data[pos:])
             if finalizer:
                 finalizer()
+
+    @staticmethod
+    def _get_arming_id(delay: bool, delay_id: int, instant_id: int | None) -> int:        
+        return delay_id if delay or instant_id is None else instant_id
