@@ -18,6 +18,7 @@ from .const import (
     DOOR_STATUS,
     OUTPUT_STATUS,
     PANEL_MODEL,
+    BG_PANELS,
     POINT_STATUS,
     USER_TYPE,
 )
@@ -105,6 +106,12 @@ class Area(PanelEntity):
     def is_pending(self) -> bool:
         return self.status in AREA_STATUS.PENDING
 
+    def is_part_armed_delay(self) -> bool:
+        return self.status in AREA_STATUS.PART_ARMED_DELAY
+    
+    def is_part_armed_instant(self) -> bool:
+        return self.status in AREA_STATUS.PART_ARMED_INSTANT
+    
     def is_part_armed(self) -> bool:
         return self.status in AREA_STATUS.PART_ARMED
 
@@ -118,7 +125,7 @@ class Area(PanelEntity):
         return (self.is_armed() or self.is_pending()) and bool(
             self._alarms.intersection(ALARM_MEMORY_PRIORITIES.PRIORITY_ALARMS)
         )
-
+    
     def reset(self) -> None:
         self.status = AREA_STATUS.UNKNOWN
         self._set_ready(AREA_READY_STATUS.NOT, 0)
@@ -282,6 +289,9 @@ class Panel:
 
     async def area_arm_all(self, area_id: int, delay: bool = True) -> None:
         await self._area_arm(area_id, self._get_arming_id(delay, *self._all_arming_id))
+
+    def is_part_arm_instant_enabled(self) -> bool:
+        return self.model in BG_PANELS
 
     async def set_output_active(self, output_id: int) -> None:
         await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
