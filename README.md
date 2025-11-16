@@ -13,7 +13,12 @@ In practice, this library has only been tested with B8512G and the B5512 and the
 - For all panels, make sure that your Automation Passcode is set to a passcode that is at least 10 characters long.
 - For B and G series panels, set the "Automation Device" to "Mode 2", and use just your automation code for authentication.
 - For Solution panels, use your user code for authentication. The user needs to have the "master code functions" authority if you wish to interact with history events.
-- For AMAX panels, use both your automation code and your user code for authentication. 
+- For AMAX panels, use both your automation code and your user code for authentication.
+
+#### Issues
+- For problems directly related to the library, please file [issues](https://github.com/mag1024/bosch-alarm-mode2/issues) for this project.
+- For Home Assistant support, please file a bug for the [integration](https://github.com/home-assistant/core/issues?q=is%3Aissue+label%3A%22integration%3A+bosch_alarm%22), or use the Home Assistant community forums.
+- For general questions and community support related to Bosch panels, please feel free to use the [discussions](https://github.com/mag1024/bosch-alarm-mode2/discussions/general) forum.
 
 Full documentation of the API can be requested from
 integrated.solutions@keenfinity-group.com.
