@@ -17,8 +17,9 @@ from .const import (
     DOOR_ACTION,
     DOOR_STATUS,
     OUTPUT_STATUS,
+    PANEL_FAMILY,
     PANEL_MODEL,
-    BG_PANELS,
+    PANEL_INFO,
     POINT_STATUS,
     USER_TYPE,
 )
@@ -215,7 +216,7 @@ class Panel:
         self._poll_task: asyncio.Task[None] | None = None
 
         # Model is always set by basicinfog
-        self.model: str = None # type: ignore[assignment]
+        self.model: PANEL_INFO = None # type: ignore[assignment]
         self.protocol_version: str | None = None
         self.firmware_version: str | None = None
         self.serial_number: int | None = None
@@ -291,7 +292,7 @@ class Panel:
         await self._area_arm(area_id, self._get_arming_id(delay, *self._all_arming_id))
 
     def is_part_arm_instant_enabled(self) -> bool:
-        return self.model in BG_PANELS
+        return self.model.model_family is PANEL_FAMILY.BG_SERIE
 
     async def set_output_active(self, output_id: int) -> None:
         await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
@@ -319,7 +320,7 @@ class Panel:
 
     def print(self) -> None:
         if self.model:
-            print("Model:", self.model)
+            print("Model:", self.model.model_name)
         if self.firmware_version:
             print("Firmware version:", self.firmware_version)
         if self.protocol_version:
@@ -493,7 +494,7 @@ class Panel:
 
     async def _authenticate(self) -> None:
         user_type = USER_TYPE.AUTOMATION
-        if "Solution" in self.model:
+        if self.model.model_family is PANEL_FAMILY.SOLUTION:
             if not self._installer_or_user_code:
                 raise ValueError("The user code is required for Solution panels")
             if not self._installer_or_user_code.isnumeric():
@@ -502,7 +503,7 @@ class Panel:
                 raise ValueError("The user code has a maximum length of 8 digits.")
             # Solution panels don't require an automation code
             self._automation_code = None
-        elif "AMAX" in self.model:
+        elif self.model.model_family is PANEL_FAMILY.AMAX:
             if not self._installer_or_user_code:
                 raise ValueError("The installer code is required for AMAX panels")
             if not self._automation_code:
