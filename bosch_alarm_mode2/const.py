@@ -1,4 +1,5 @@
-from typing import NamedTuple
+from dataclasses import dataclass
+from enum import Enum
 
 
 ERROR = {
@@ -48,32 +49,32 @@ ERROR = {
     0xEF: "Bad Remote Enable",
 }
 
-class PANEL_FAMILY():
-    BG_SERIE = "BG_SERIE"
+class PANEL_FAMILY(Enum):
+    BG_SERIES = "BG_SERIES"
     SOLUTION = "SOLUTION"
     AMAX = "AMAX"
 
+@dataclass(frozen=True) 
+class PanelModel:
+  name: str
+  family: PANEL_FAMILY
 
-class PANEL_INFO(NamedTuple):
-    model_name: str
-    model_family: PANEL_FAMILY
 
-
-PANEL_MODEL: dict[int, PANEL_INFO] = {
-    0x20: PANEL_INFO("Solution 2000", PANEL_FAMILY.SOLUTION),
-    0x21: PANEL_INFO("Solution 3000", PANEL_FAMILY.SOLUTION),
-    0x28: PANEL_INFO("Solution 4000", PANEL_FAMILY.SOLUTION),
-    0x22: PANEL_INFO("AMAX 2100", PANEL_FAMILY.AMAX),
-    0x23: PANEL_INFO("AMAX 3000", PANEL_FAMILY.AMAX),
-    0x24: PANEL_INFO("AMAX 4000", PANEL_FAMILY.AMAX),
-    0x79: PANEL_INFO("D7412GV4", PANEL_FAMILY.BG_SERIE),
-    0x84: PANEL_INFO("D9412GV4", PANEL_FAMILY.BG_SERIE),
-    0xA0: PANEL_INFO("B4512 (US1B)", PANEL_FAMILY.BG_SERIE),
-    0xA4: PANEL_INFO("B5512 (US1B)", PANEL_FAMILY.BG_SERIE),
-    0xA6: PANEL_INFO("B8512G (US1A)", PANEL_FAMILY.BG_SERIE),
-    0xA7: PANEL_INFO("B9512G (US1A)", PANEL_FAMILY.BG_SERIE),
-    0xA8: PANEL_INFO("B3512 (US1B)", PANEL_FAMILY.BG_SERIE),
-    0xA9: PANEL_INFO("B6512 (US1B)", PANEL_FAMILY.BG_SERIE),
+PANEL_MODELS = {
+    0x20: PanelModel("Solution 2000", PANEL_FAMILY.SOLUTION),
+    0x21: PanelModel("Solution 3000", PANEL_FAMILY.SOLUTION),
+    0x28: PanelModel("Solution 4000", PANEL_FAMILY.SOLUTION),
+    0x22: PanelModel("AMAX 2100", PANEL_FAMILY.AMAX),
+    0x23: PanelModel("AMAX 3000", PANEL_FAMILY.AMAX),
+    0x24: PanelModel("AMAX 4000", PANEL_FAMILY.AMAX),
+    0x79: PanelModel("D7412GV4", PANEL_FAMILY.BG_SERIES),
+    0x84: PanelModel("D9412GV4", PANEL_FAMILY.BG_SERIES),
+    0xA0: PanelModel("B4512 (US1B)", PANEL_FAMILY.BG_SERIES),
+    0xA4: PanelModel("B5512 (US1B)", PANEL_FAMILY.BG_SERIES),
+    0xA6: PanelModel("B8512G (US1A)", PANEL_FAMILY.BG_SERIES),
+    0xA7: PanelModel("B9512G (US1A)", PANEL_FAMILY.BG_SERIES),
+    0xA8: PanelModel("B3512 (US1B)", PANEL_FAMILY.BG_SERIES),
+    0xA9: PanelModel("B6512 (US1B)", PANEL_FAMILY.BG_SERIES),
 }
 
 
