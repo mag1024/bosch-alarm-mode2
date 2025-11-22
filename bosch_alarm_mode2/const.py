@@ -1,3 +1,7 @@
+from dataclasses import dataclass
+from enum import Enum
+
+
 ERROR = {
     0x00: "Non-specific error",
     0x01: "Checksum failure (UDP connections only)",
@@ -45,21 +49,32 @@ ERROR = {
     0xEF: "Bad Remote Enable",
 }
 
-PANEL_MODEL = {
-    0x20: "Solution 2000",
-    0x21: "Solution 3000",
-    0x28: "Solution 4000",
-    0x22: "AMAX 2100",
-    0x23: "AMAX 3000",
-    0x24: "AMAX 4000",
-    0x79: "D7412GV4",
-    0x84: "D9412GV4",
-    0xA0: "B4512 (US1B)",
-    0xA4: "B5512 (US1B)",
-    0xA6: "B8512G (US1A)",
-    0xA7: "B9512G (US1A)",
-    0xA8: "B3512 (US1B)",
-    0xA9: "B6512 (US1B)",
+class PANEL_FAMILY(Enum):
+    BG_SERIES = "BG_SERIES"
+    SOLUTION = "SOLUTION"
+    AMAX = "AMAX"
+
+@dataclass(frozen=True) 
+class PanelModel:
+    name: str
+    family: PANEL_FAMILY
+
+
+PANEL_MODELS = {
+    0x20: PanelModel("Solution 2000", PANEL_FAMILY.SOLUTION),
+    0x21: PanelModel("Solution 3000", PANEL_FAMILY.SOLUTION),
+    0x28: PanelModel("Solution 4000", PANEL_FAMILY.SOLUTION),
+    0x22: PanelModel("AMAX 2100", PANEL_FAMILY.AMAX),
+    0x23: PanelModel("AMAX 3000", PANEL_FAMILY.AMAX),
+    0x24: PanelModel("AMAX 4000", PANEL_FAMILY.AMAX),
+    0x79: PanelModel("D7412GV4", PANEL_FAMILY.BG_SERIES),
+    0x84: PanelModel("D9412GV4", PANEL_FAMILY.BG_SERIES),
+    0xA0: PanelModel("B4512 (US1B)", PANEL_FAMILY.BG_SERIES),
+    0xA4: PanelModel("B5512 (US1B)", PANEL_FAMILY.BG_SERIES),
+    0xA6: PanelModel("B8512G (US1A)", PANEL_FAMILY.BG_SERIES),
+    0xA7: PanelModel("B9512G (US1A)", PANEL_FAMILY.BG_SERIES),
+    0xA8: PanelModel("B3512 (US1B)", PANEL_FAMILY.BG_SERIES),
+    0xA9: PanelModel("B6512 (US1B)", PANEL_FAMILY.BG_SERIES),
 }
 
 
@@ -68,7 +83,9 @@ class AREA_STATUS:
     DISARMED = 0x04
     ARMING = [0x07, 0x08, 0x0D]
     PENDING = [0x05, 0x06, 0x0E]
-    PART_ARMED = [0x02, 0x03]
+    PART_ARMED_INSTANT = [0x02]
+    PART_ARMED_DELAY = [0x03]
+    PART_ARMED = PART_ARMED_DELAY + PART_ARMED_INSTANT
     ALL_ARMED = [0x01, 0x09, 0x0C]
     ARMED = ALL_ARMED + PART_ARMED
 
