@@ -292,7 +292,7 @@ class Panel:
         await self._area_arm(area_id, self._get_arming_id(delay, *self._all_arming_id))
 
     def is_part_arm_instant_supported(self) -> bool:
-        return self.model.family is PANEL_FAMILY.BG_SERIES
+        return self.model.family == PANEL_FAMILY.BG_SERIES
 
     async def set_output_active(self, output_id: int) -> None:
         await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
@@ -494,7 +494,7 @@ class Panel:
 
     async def _authenticate(self) -> None:
         user_type = USER_TYPE.AUTOMATION
-        if self.model.family is PANEL_FAMILY.SOLUTION:
+        if self.model.family == PANEL_FAMILY.SOLUTION:
             if not self._installer_or_user_code:
                 raise ValueError("The user code is required for Solution panels")
             if not self._installer_or_user_code.isnumeric():
@@ -503,7 +503,7 @@ class Panel:
                 raise ValueError("The user code has a maximum length of 8 digits.")
             # Solution panels don't require an automation code
             self._automation_code = None
-        elif self.model.family is PANEL_FAMILY.AMAX:
+        elif self.model.family == PANEL_FAMILY.AMAX:
             if not self._installer_or_user_code:
                 raise ValueError("The installer code is required for AMAX panels")
             if not self._automation_code:

@@ -56,8 +56,8 @@ class PANEL_FAMILY(Enum):
 
 @dataclass(frozen=True) 
 class PanelModel:
-  name: str
-  family: PANEL_FAMILY
+    name: str
+    family: PANEL_FAMILY
 
 
 PANEL_MODELS = {
