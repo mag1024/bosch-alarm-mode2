@@ -126,7 +126,7 @@ class Area(PanelEntity):
         return (self.is_armed() or self.is_pending()) and bool(
             self._alarms.intersection(ALARM_MEMORY_PRIORITIES.PRIORITY_ALARMS)
         )
-    
+
     def reset(self) -> None:
         self.status = AREA_STATUS.UNKNOWN
         self._set_ready(AREA_READY_STATUS.NOT, 0)
