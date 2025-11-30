@@ -723,8 +723,12 @@ class Panel:
             area = BE_INT.int16(response_detail)
             point = BE_INT.int16(response_detail, 3)
             if point == 0xFFFF:
-                await self._get_alarms_for_priority(priority, area, point)
+                # # 0xFFFF is sentinel that indicates that more points are available.
+                # Issues a follow-up starting at the last valid point. 
+                await self._get_alarms_for_priority(priority, last_area, last_point)
                 return
+            last_area = area
+            last_point = point
             if area in self.areas:
                 self.areas[area]._set_alarm(priority, True)
             else:
