@@ -797,6 +797,17 @@ class Panel:
         request.extend(bytearray((area_id - 1) // 8))  # leading 0 bytes
         request.append(1 << (7 - ((area_id - 1) % 8)))  # i%8-th bit from the left (top) set
         await self._send_command(CMD.AREA_ARM, request)
+        # The panel starts committing the change as soon as it acknowledges it,
+        # before any subscription update tells us so.
+        self._hold_commands()
+
+    def _hold_commands(self, seconds: float = 3.0) -> None:
+        # Some panels (observed on Solution 3000) wedge the automation session if a
+        # command arrives while they are committing an arm/disarm/alarm transition.
+        # Applied synchronously in _on_status_update, so it takes effect before any
+        # task started by a consumer or finalizer can send.
+        if self._connection:
+            self._connection.quiet_for(seconds)
 
     async def _subscribe(self) -> None:
         IGNORE = b"\x00"
@@ -898,26 +909,30 @@ class Panel:
         return 6
 
     def _on_status_update(self, data: bytearray) -> None:
+        # The bool marks updates that signal a panel state change, after which
+        # outgoing commands should be held.
         # The second callback is invoked after all updates are consumed.
-        CONSUMERS: dict[int, tuple[Callable[[bytearray], int], Callable[[], None] | None]] = {
-            0x00: (lambda data: 0, None),  # heartbeat
-            0x01: (self._event_summary_consumer, None),
-            0x02: (self._event_history_consumer, self._event_history_finalizer),
-            0x04: (self._area_on_off_consumer, self._area_on_off_finalizer),
-            0x05: (self._area_ready_consumer, None),
-            0x06: (self._output_status_consumer, self._output_status_finalizer),
-            0x07: (self._point_status_consumer, None),
-            0x08: (self._door_status_consumer, None),
-            0x0A: (self._panel_status_consumer, None),
+        CONSUMERS: dict[int, tuple[Callable[[bytearray], int], bool, Callable[[], None] | None]] = {
+            0x00: (lambda data: 0, False, None),  # heartbeat
+            0x01: (self._event_summary_consumer, False, None),
+            0x02: (self._event_history_consumer, True, self._event_history_finalizer),
+            0x04: (self._area_on_off_consumer, True, self._area_on_off_finalizer),
+            0x05: (self._area_ready_consumer, False, None),
+            0x06: (self._output_status_consumer, False, self._output_status_finalizer),
+            0x07: (self._point_status_consumer, False, None),
+            0x08: (self._door_status_consumer, False, None),
+            0x0A: (self._panel_status_consumer, False, None),
         }
         pos = 0
         while pos < len(data):
             (update_type, n_updates) = data[pos : pos + 2]
             pos += 2
             self._last_msg = datetime.now()
-            consumer, finalizer = CONSUMERS[update_type]
+            consumer, hold_required, finalizer = CONSUMERS[update_type]
             for _ in range(0, n_updates):
                 pos += consumer(data[pos:])
+            if hold_required:
+                self._hold_commands()
             if finalizer:
                 finalizer()
 

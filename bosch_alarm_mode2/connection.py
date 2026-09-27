@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Callable
 import logging
 import binascii
+import time
 from datetime import datetime
 
 from collections import deque
@@ -23,10 +24,17 @@ class Connection(asyncio.Protocol):
         self._buffer = bytearray()
         self._pending: deque[asyncio.Future[bytearray]] = deque()
         self._pending_last_empty = datetime.now()
+        self._quiet_until = 0.0
         self.set_max_commands_in_flight(1)
 
     def set_max_commands_in_flight(self, command_count: int) -> None:
         self._command_semaphore = asyncio.Semaphore(command_count)
+
+    def quiet_for(self, seconds: float) -> None:
+        # Some panels wedge if a command arrives while they are committing a state
+        # change. Hold outgoing commands until `seconds` from now; repeated calls
+        # extend rather than stack.
+        self._quiet_until = max(self._quiet_until, time.monotonic() + seconds)
 
     def connection_made(self, transport: asyncio.Transport) -> None:  # type: ignore
         LOG.info("Connection established.")
@@ -47,6 +55,12 @@ class Connection(asyncio.Protocol):
         # Some panels don't like receiving multiple commands at once
         # so we limit the amount of commands that are in flight at a given time
         async with self._command_semaphore:
+            # The quiet period may be extended while we wait, so re-check after sleeping.
+            while (delay := self._quiet_until - time.monotonic()) > 0:
+                LOG.debug("Holding command %02x for %.1fs", code, delay)
+                await asyncio.sleep(delay)
+            if not self._transport:
+                raise asyncio.InvalidStateError("Transport not connected")
             request = bytearray([self.protocol])
             length_size = 2 if self.protocol == PROTOCOL.EXTENDED else 1
             request.extend((len(data) + 1).to_bytes(length_size, "big"))
