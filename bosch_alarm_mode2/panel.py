@@ -292,7 +292,7 @@ class Panel:
         await self._area_arm(area_id, self._get_arming_id(delay, *self._all_arming_id))
 
     def is_part_arm_instant_supported(self) -> bool:
-        return self.model.family in (PANEL_FAMILY.B_SERIES, PANEL_FAMILY.G_SERIES)
+        return self.model.family in (PANEL_FAMILY.B_SERIES, PANEL_FAMILY.G_SERIES, PANEL_FAMILY.GV4)
 
     async def set_output_active(self, output_id: int) -> None:
         await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
