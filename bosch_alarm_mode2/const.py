@@ -50,9 +50,11 @@ ERROR = {
 }
 
 class PANEL_FAMILY(Enum):
-    BG_SERIES = "BG_SERIES"
     SOLUTION = "SOLUTION"
     AMAX = "AMAX"
+    GV4 = "GV4"
+    B_SERIES = "B_SERIES"
+    G_SERIES = "G_SERIES"
 
 @dataclass(frozen=True) 
 class PanelModel:
@@ -63,18 +65,21 @@ class PanelModel:
 PANEL_MODELS = {
     0x20: PanelModel("Solution 2000", PANEL_FAMILY.SOLUTION),
     0x21: PanelModel("Solution 3000", PANEL_FAMILY.SOLUTION),
-    0x28: PanelModel("Solution 4000", PANEL_FAMILY.SOLUTION),
     0x22: PanelModel("AMAX 2100", PANEL_FAMILY.AMAX),
     0x23: PanelModel("AMAX 3000", PANEL_FAMILY.AMAX),
     0x24: PanelModel("AMAX 4000", PANEL_FAMILY.AMAX),
-    0x79: PanelModel("D7412GV4", PANEL_FAMILY.BG_SERIES),
-    0x84: PanelModel("D9412GV4", PANEL_FAMILY.BG_SERIES),
-    0xA0: PanelModel("B4512 (US1B)", PANEL_FAMILY.BG_SERIES),
-    0xA4: PanelModel("B5512 (US1B)", PANEL_FAMILY.BG_SERIES),
-    0xA6: PanelModel("B8512G (US1A)", PANEL_FAMILY.BG_SERIES),
-    0xA7: PanelModel("B9512G (US1A)", PANEL_FAMILY.BG_SERIES),
-    0xA8: PanelModel("B3512 (US1B)", PANEL_FAMILY.BG_SERIES),
-    0xA9: PanelModel("B6512 (US1B)", PANEL_FAMILY.BG_SERIES),
+    0x26: PanelModel("Solution 2100", PANEL_FAMILY.SOLUTION),
+    0x27: PanelModel("Solution 3100", PANEL_FAMILY.SOLUTION),
+    0x28: PanelModel("Solution 4000", PANEL_FAMILY.SOLUTION),
+    0x29: PanelModel("Solution 4100", PANEL_FAMILY.SOLUTION),
+    0x79: PanelModel("D7412GV4", PANEL_FAMILY.GV4),
+    0x84: PanelModel("D9412GV4", PANEL_FAMILY.GV4),
+    0xA0: PanelModel("B4512 (US1B)", PANEL_FAMILY.B_SERIES),
+    0xA4: PanelModel("B5512 (US1B)", PANEL_FAMILY.B_SERIES),
+    0xA6: PanelModel("B8512G (US1A)", PANEL_FAMILY.G_SERIES),
+    0xA7: PanelModel("B9512G (US1A)", PANEL_FAMILY.G_SERIES),
+    0xA8: PanelModel("B3512 (US1B)", PANEL_FAMILY.B_SERIES),
+    0xA9: PanelModel("B6512 (US1B)", PANEL_FAMILY.B_SERIES),
 }
 
 
