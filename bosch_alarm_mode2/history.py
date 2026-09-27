@@ -2,6 +2,8 @@ import abc
 import logging
 from datetime import datetime
 from typing import NamedTuple
+
+from bosch_alarm_mode2.const import PANEL_FAMILY
 from .history_const import (
     B_G_HISTORY_FORMAT,
     AMAX_HISTORY_FORMAT,
@@ -198,12 +200,12 @@ class History:
         # allowing us to discover the max existing event id.
         return self._events[-1][0] if self._events else 0xFFFFFFFF
 
-    def init_for_panel(self, panel_type: int) -> None:
-        if panel_type <= 0x21 or panel_type == 0x28:
+    def init_for_panel(self, panel_type: PANEL_FAMILY) -> None:
+        if panel_type == PANEL_FAMILY.SOLUTION:
             self._parser = SolutionHistoryParser()
-        elif panel_type <= 0x24:
+        elif panel_type == PANEL_FAMILY.AMAX:
             self._parser = AmaxHistoryParser()
-        else:
+        elif panel_type in (PANEL_FAMILY.B_SERIES, PANEL_FAMILY.G_SERIES, PANEL_FAMILY.GV4):
             self._parser = BGHistoryParser()
 
     def _append_error(self, id: int, excp: Exception) -> None:

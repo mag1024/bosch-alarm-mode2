@@ -292,7 +292,7 @@ class Panel:
         await self._area_arm(area_id, self._get_arming_id(delay, *self._all_arming_id))
 
     def is_part_arm_instant_supported(self) -> bool:
-        return self.model.family == PANEL_FAMILY.BG_SERIES
+        return self.model.family in (PANEL_FAMILY.B_SERIES, PANEL_FAMILY.G_SERIES)
 
     async def set_output_active(self, output_id: int) -> None:
         await self._set_output_state(output_id, OUTPUT_STATUS.ACTIVE)
@@ -531,16 +531,18 @@ class Panel:
         except Exception:
             # If the panel doesn't support CF03, then use CF01
             data = await self._send_command(CMD.WHAT_ARE_YOU)
+        if not data[0] in PANEL_MODELS:
+            raise ValueError(f"Unsupported panel model: {data[0]}")
         self.model = PANEL_MODELS[data[0]]
         self.protocol_version = "v%d.%d" % (data[5], data[6])
         # B and G series panels support multiple commands in flight, AMAX and Solution panels do not.
-        if data[0] >= 0xA0 and self._connection:
+        if self.model.family in (PANEL_FAMILY.B_SERIES, PANEL_FAMILY.G_SERIES) and self._connection:
             self._connection.set_max_commands_in_flight(100)
         if data[13]:
             LOG.warning("busy flag: %d", data[13])
 
         # Solution and AMAX panels use different arming types from B/G series panels.
-        if data[0] <= 0x28:
+        if self.model.family in (PANEL_FAMILY.SOLUTION, PANEL_FAMILY.AMAX):
             self._partial_arming_id = (AREA_ARMING_STATUS.STAY1, None)
             self._all_arming_id = (AREA_ARMING_STATUS.AWAY, None)
         
@@ -566,7 +568,7 @@ class Panel:
             _supported_format(bitmask[24], [(0x40, 2)]),
             _supported_format(bitmask[16], [(0x20, 1)]),
         )
-        self._history.init_for_panel(data[0])
+        self._history.init_for_panel(self.model.family)
         self._history_cmd = (
             CMD.REQUEST_RAW_HISTORY_EVENTS_EXT
             if bitmask[16] & 0x02
