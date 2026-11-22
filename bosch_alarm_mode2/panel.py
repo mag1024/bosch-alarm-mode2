@@ -450,9 +450,12 @@ class Panel:
             loaded = self.areas and self.points
             load_selector = self.LOAD_STATUS if loaded else self.LOAD_ALL
             try:
-                await self._connect(load_selector)
-            except asyncio.exceptions.TimeoutError:
-                LOG.debug("Connection timed out...")
+                # A panel that accepts the connection but never answers must not stop the monitor for good
+                await asyncio.wait_for(self._connect(load_selector), timeout=300)
+            except (asyncio.exceptions.TimeoutError, asyncio.InvalidStateError, OSError) as err:
+                LOG.debug("Reconnecting failed: %r", err)
+                if self._connection:
+                    self._connection.close()
             return
 
         idle_time = datetime.now() - (self._last_msg or datetime.fromtimestamp(0))

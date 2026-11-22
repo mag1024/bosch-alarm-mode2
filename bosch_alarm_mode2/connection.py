@@ -34,6 +34,13 @@ class Connection(asyncio.Protocol):
 
     def connection_lost(self, exc: Exception | None) -> None:
         LOG.info("Connection terminated.")
+        self._transport = None
+        # No response will come for these any more; without this a caller (the reconnect in the
+        # connection monitor among them) would wait for one forever.
+        while self._pending:
+            response = self._pending.popleft()
+            if not response.done():
+                response.set_exception(ConnectionError("Connection lost"))
         self._on_disconnect()
 
     def data_received(self, data: bytes) -> None:
