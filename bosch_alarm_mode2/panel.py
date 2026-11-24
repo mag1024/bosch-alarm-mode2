@@ -452,7 +452,9 @@ class Panel:
             try:
                 # A panel that accepts the connection but never answers must not stop the monitor for good
                 await asyncio.wait_for(self._connect(load_selector), timeout=300)
-            except (asyncio.exceptions.TimeoutError, asyncio.InvalidStateError, OSError) as err:
+            except PermissionError:
+                raise
+            except (asyncio.InvalidStateError, OSError) as err:
                 LOG.debug("Reconnecting failed: %r", err)
                 if self._connection:
                     self._connection.close()
