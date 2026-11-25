@@ -12,6 +12,10 @@ from .utils import BE_INT
 LOG = logging.getLogger(__name__)
 
 
+class NackError(Exception):
+    pass
+
+
 class Connection(asyncio.Protocol):
     def __init__(
         self, on_status_update: Callable[[bytearray], None], on_disconnect: Callable[[], None]
@@ -103,7 +107,7 @@ class Connection(asyncio.Protocol):
         if data[0] == 0xFC:
             response.set_result(bytearray())
         elif data[0] == 0xFD:
-            response.set_exception(Exception("NACK: ", ERROR[data[1]]))
+            response.set_exception(NackError("NACK: ", ERROR[data[1]]))
         elif data[0] == 0xFE:
             response.set_result(data[1:])
         else:

@@ -23,7 +23,7 @@ from .const import (
     POINT_STATUS,
     USER_TYPE,
 )
-from .connection import Connection
+from .connection import Connection, NackError
 from .history import History, HistoryEvent
 from .utils import BE_INT, Observable
 
@@ -417,7 +417,7 @@ class Panel:
                     "Loaded %d history events in %.2fs"
                     % (len(self.events) - start_size, time.perf_counter() - start_t)
                 )
-        except Exception:
+        except NackError:
             if not self._history.has_errored:
                 LOG.warning(
                     "Failed to load history events; ensure your user has the 'master code functions' authority."
@@ -482,8 +482,8 @@ class Panel:
         try:
             creds = int(str(self._installer_or_user_code).ljust(8, "F"), 16)
             await self._send_command(CMD.LOGIN_REMOTE_USER, creds.to_bytes(4, "big"))
-        except Exception:
-            raise PermissionError("Authentication failed, please check your passcode.")
+        except NackError as err:
+            raise PermissionError("Authentication failed, please check your passcode.") from err
 
     async def _authenticate_automation_user(self, user_type: int) -> None:
         creds = bytearray([user_type])  # automation user
@@ -533,7 +533,7 @@ class Panel:
     async def _basicinfo(self) -> None:
         try:
             data = await self._send_command(CMD.WHAT_ARE_YOU, bytearray([3]))
-        except Exception:
+        except NackError:
             # If the panel doesn't support CF03, then use CF01
             data = await self._send_command(CMD.WHAT_ARE_YOU)
         if not data[0] in PANEL_MODELS:
